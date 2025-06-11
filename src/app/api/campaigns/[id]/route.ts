@@ -6,10 +6,10 @@ export const dynamic = 'force-dynamic';
 
 async function handleRequest(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createAdminServerClient();
-  const campaignId = params.id;
+  const { id: campaignId } = await params;
 
   try {
     if (request.method === 'PUT') {

@@ -7,7 +7,7 @@ import type { Database } from '@/types';
  * Pauses a running campaign by setting its status to 'paused' and recording the timestamp.
  */
 export async function POST(request: NextRequest) {
-  const supabase = await createAdminServerClient<Database>();
+  const supabase = await createAdminServerClient();
 
   let requestBody;
   try {

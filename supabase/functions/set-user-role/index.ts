@@ -1,6 +1,5 @@
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-// Using the version from your package.json for consistency
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8';
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
 console.log('Function `set-user-role` up and running!');
 
@@ -12,10 +11,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+async function handler(req: Request) {
   // Immediately handle CORS preflight requests.
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new NextResponse('ok', { headers: corsHeaders });
   }
 
   try {
@@ -32,8 +35,8 @@ serve(async (req) => {
     const token = authHeader.replace('Bearer ', '');
 
     const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      supabaseUrl,
+      supabaseAnonKey,
       {
         global: { headers: { Authorization: `Bearer ${token}` } },
         auth: {
@@ -58,8 +61,8 @@ serve(async (req) => {
 
     // Initialize Supabase admin client for privileged operations
     const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      supabaseUrl,
+      supabaseServiceRoleKey
     );
 
     // --- Your Core Business Logic (Unchanged) ---
@@ -88,7 +91,7 @@ serve(async (req) => {
     console.log(`User ${user_email} (${user_id}) processed. Role: ${newRole}. Profile updated.`);
 
     // --- Success Response ---
-    return new Response(
+    return new NextResponse(
       JSON.stringify({ success: true, userId: user_id, userRole: newRole }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -106,7 +109,7 @@ serve(async (req) => {
     if (errorMessage === 'No authorization header' || errorMessage === 'Invalid or expired token') status = 401;
     if (errorMessage.includes('Missing required fields')) status = 400;
 
-    return new Response(
+    return new NextResponse(
       JSON.stringify({ error: errorMessage }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -114,4 +117,6 @@ serve(async (req) => {
       }
     );
   }
-});
+}
+
+export default handler;

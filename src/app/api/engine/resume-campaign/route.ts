@@ -8,7 +8,7 @@ import type { Database } from '@/types';
  * It first calls an RPC function to adjust future job schedules, then updates the state to 'running'.
  */
 export async function POST(request: NextRequest) {
-  const supabase = await createAdminServerClient<Database>();
+  const supabase = await createAdminServerClient();
 
   let requestBody;
   try {

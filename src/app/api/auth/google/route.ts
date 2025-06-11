@@ -8,7 +8,8 @@ export async function GET(request: Request) {
   const next = searchParams.get('next') || '/';
   const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
-  const cookieStore = cookies();
+  // Fix: Await the cookieStore promise
+  const cookieStore = await cookies();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

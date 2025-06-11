@@ -57,9 +57,9 @@ export async function getOpenRate(): Promise<number> {
   if (!data || data.length === 0) return 0;
 
   const totals = data.reduce(
-    (acc, record) => {
-      acc.opened += record.opened || 0;
-      acc.delivered += record.delivered || 0;
+    (acc: { opened: number; delivered: number }, record) => {
+      acc.opened += record.opened ?? 0;
+      acc.delivered += record.delivered ?? 0;
       return acc;
     },
     { opened: 0, delivered: 0 }

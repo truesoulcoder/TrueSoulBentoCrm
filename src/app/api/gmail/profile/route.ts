@@ -1,6 +1,6 @@
-import { people, people_v1 } from '@googleapis/people';
+import { people } from '@googleapis/people';
 import { createClient } from '@supabase/supabase-js';
-import { JWT } from 'google-auth-library';
+import { GoogleAuth } from 'google-auth-library';
 import { NextResponse } from 'next/server';
 
 // Ensure these are set in your .env.local
@@ -51,21 +51,30 @@ export async function GET() {
 
     for (const sender of senders as EmailSender[]) {
       try {
-        const jwtClient = new JWT({
-          email: serviceAccountCredentials.client_email,
-          key: serviceAccountCredentials.private_key,
+        // Initialize auth client with GoogleAuth
+        const auth = new GoogleAuth({
+          credentials: {
+            client_email: serviceAccountCredentials.client_email,
+            private_key: serviceAccountCredentials.private_key
+          },
           scopes: SCOPES,
-          subject: sender.email, // Impersonate the target user
+          clientOptions: {
+            subject: sender.email
+          }
         });
 
-        const peopleService: people_v1.People = people({
+        const authClient = await auth.getClient();
+
+        // Initialize People API
+        const peopleService = people({
           version: 'v1',
-          auth: jwtClient,
+          auth: authClient as any
         });
 
+        // Get profile data
         const person = await peopleService.people.get({
           resourceName: 'people/me',
-          personFields: 'photos',
+          personFields: 'photos,emailAddresses'
         });
 
         const photoUrl = person.data.photos?.find(photo => photo.default)?.url || null;

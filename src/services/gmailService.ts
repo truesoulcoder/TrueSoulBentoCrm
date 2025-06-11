@@ -1,12 +1,25 @@
 // --- Drop-in Replacement for your Service File ---
+import { google } from 'googleapis';
+import type { gmail_v1 } from 'googleapis';
 
 // Define a more descriptive return type
-interface GmailSendResult {
+export interface GmailSendResult {
   success: boolean;
   internalId?: string;       // The short ID, e.g., '1973e2ad2ea3f111'
   globalMessageId?: string;  // The correct, long ID, e.g., '<...-GMR@mx.google.com>'
   threadId?: string;
   error?: unknown;
+}
+
+/**
+ * Initializes and returns a Gmail client for the given email address
+ * @param impersonatedUserEmail - Email address to authenticate as
+ * @returns Initialized Gmail client
+ */
+export function getGmailService(impersonatedUserEmail: string): gmail_v1.Gmail {
+  // TODO: Implement actual Gmail service initialization with proper auth
+  // This is a placeholder - you should implement proper Google Auth
+  return google.gmail({ version: 'v1' });
 }
 
 /**
@@ -18,7 +31,7 @@ interface GmailSendResult {
  * @param attachments - Optional array of file attachments
  * @returns Object containing success status and the correct globalMessageId
  */
-async function sendEmail(
+export async function sendEmail(
   impersonatedUserEmail: string,
   recipientEmail: string,
   subject: string,
@@ -91,7 +104,7 @@ async function sendEmail(
 
     // Find and extract the correct, globally-unique Message-ID
     const messageIdHeader = getResponse.data.payload?.headers?.find(
-      (h) => h.name?.toLowerCase() === 'message-id'
+      (h: any) => h.name?.toLowerCase() === 'message-id'
     );
 
     if (!messageIdHeader?.value) {

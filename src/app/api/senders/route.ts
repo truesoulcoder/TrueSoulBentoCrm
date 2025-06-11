@@ -10,12 +10,14 @@ const createSupabaseServerClient = (cookieStore: ReturnType<typeof cookies>) => 
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return cookieStore.getAll();
+        async getAll() {
+          const allCookies = await cookieStore;
+          return allCookies.getAll();
         },
-        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
+        async setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
+          const resolvedCookieStore = await cookieStore;
           cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set({ name, value, ...options });
+            resolvedCookieStore.set({ name, value, ...options });
           });
         }
       },

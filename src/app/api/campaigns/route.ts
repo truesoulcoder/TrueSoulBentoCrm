@@ -1,7 +1,7 @@
 // src/app/api/campaigns/route.ts
 import { createAdminServerClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-import type { Database } from '@/types';
+import type { Database } from '@/types/supabase';
 
 export const dynamic = 'force-dynamic';
 

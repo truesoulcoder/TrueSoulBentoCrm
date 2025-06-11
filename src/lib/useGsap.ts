@@ -1,5 +1,5 @@
 // src/lib/useGsap.ts
-import gsap from 'gsap';
+import { gsap } from 'gsap';
 import { useEffect, RefObject } from 'react';
 
 /**
@@ -8,6 +8,11 @@ import { useEffect, RefObject } from 'react';
  * @param vars - GSAP animation vars
  * @param deps - Dependency array to re-run the animation
  */
+type GSAPTweenVars = {
+  from: gsap.TweenVars;
+  to: gsap.TweenVars;
+};
+
 export function useGsap(ref: RefObject<HTMLElement>, vars: GSAPTweenVars, deps: any[] = []) {
   useEffect(() => {
     if (ref.current) {

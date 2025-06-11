@@ -94,8 +94,10 @@ const CampaignDashboard: FC<CampaignDashboardProps> = () => {
                 { key: 'Winter Sale', label: 'Winter Sale' },
                 { key: 'New Product Launch', label: 'New Product Launch' }
               ]}
-              onAction={(key: string) => setCurrentCampaign(key)}
-            />
+              onAction={(key: React.Key) => setCurrentCampaign(key.toString())}
+            >
+              <Button variant="ghost">Select Campaign</Button>
+            </DropdownMenu>
           </Dropdown>
 
           {!isRunning ? (

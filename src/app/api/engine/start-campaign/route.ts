@@ -8,7 +8,7 @@ import type { Database } from '@/types';
  * Note: This does not schedule jobs, it only "enables" a campaign that has already been set up.
  */
 export async function POST(request: NextRequest) {
-  const supabase = await createAdminServerClient<Database>();
+  const supabase = await createAdminServerClient();
 
   let requestBody;
   try {

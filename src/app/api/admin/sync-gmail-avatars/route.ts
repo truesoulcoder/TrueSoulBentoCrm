@@ -1,14 +1,18 @@
 import { people, people_v1 } from '@googleapis/people';
 import { createClient } from '@supabase/supabase-js';
-import { JWT } from 'google-auth-library';
+import { JWT, BaseExternalAccountClient, GoogleAuth, OAuth2Client } from 'google-auth-library';
 import { NextResponse } from 'next/server';
 
-// Ensure these are set in your .env.local
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const googleServiceAccountKeyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const googleServiceAccountKeyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
 
-const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  console.error('Missing required Supabase environment variables');
+  process.exit(1);
+}
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 const SCOPES = ['https://www.googleapis.com/auth/userinfo.profile'];
 
@@ -20,8 +24,11 @@ interface EmailSender {
 }
 
 export async function GET() {
-  if (!supabaseUrl || !supabaseServiceRoleKey || !googleServiceAccountKeyJson) {
-    return NextResponse.json({ error: 'Missing environment variables' }, { status: 500 });
+  if (!googleServiceAccountKeyJson) {
+    return NextResponse.json(
+      { error: 'Google service account credentials not configured' },
+      { status: 500 }
+    );
   }
 
   try {
@@ -53,12 +60,15 @@ export async function GET() {
           scopes: SCOPES,
           subject: sender.email, // Impersonate the target user
         });
+        
+        await jwtClient.authorize();
 
-        const peopleService: people_v1.People = people({
+        // Correct initialization using authorized JWT client
+        const peopleService = people({
           version: 'v1',
-          auth: jwtClient,
+          auth: jwtClient as any
         });
-
+        
         const person = await peopleService.people.get({
           resourceName: 'people/me',
           personFields: 'photos',
@@ -106,7 +116,10 @@ export async function GET() {
     });
 
   } catch (e: any) {
-    console.error('Unhandled error in sync-gmail-avatars:', e);
-    return NextResponse.json({ error: 'Internal server error', details: e.message }, { status: 500 });
+    console.error('Error in sync-gmail-avatars:', e);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }

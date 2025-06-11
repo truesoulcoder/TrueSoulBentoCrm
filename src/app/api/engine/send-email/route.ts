@@ -6,17 +6,18 @@ import { generateLoiPdf, PersonalizationData } from '@/services/pdfService';
 import { generateOfferDetails } from '@/actions/offerCalculations';
 import path from 'path';
 import { configure, Environment as NunjucksEnvironment } from 'nunjucks';
-import type { Database, Tables } from '@/types';
+import type { Database } from '@/types/supabase';
 
 // Define shorter types for convenience
 type Job = Database['public']['Tables']['campaign_jobs']['Row'];
+
 type Lead = Database['public']['Tables']['leads']['Row'];
 type Campaign = Database['public']['Tables']['campaigns']['Row'];
 type Sender = Database['public']['Tables']['senders']['Row'];
 
 // Helper to log job outcomes
 async function logJobOutcome(
-  supabase: ReturnType<typeof createAdminServerClient>,
+  supabase: Awaited<ReturnType<typeof createAdminServerClient>>,
   jobId: string,
   message: string,
   details?: object
@@ -33,16 +34,52 @@ async function logJobOutcome(
 
 // Main API handler triggered by the database worker
 export async function POST(request: NextRequest) {
-  const supabase = createAdminServerClient();
-  let job: (Job & { lead: Lead | null; campaign: Campaign | null; sender: Sender | null; }) | null = null;
-
-  const { job_id } = await request.json();
-
-  if (!job_id) {
-    return NextResponse.json({ success: false, error: 'job_id is required.' }, { status: 400 });
-  }
-
   try {
+    const supabase = await createAdminServerClient();
+    
+    let requestBody;
+    try {
+      requestBody = await request.json();
+    } catch (error) {
+      return NextResponse.json({ success: false, error: 'Invalid JSON body.' }, { status: 400 });
+    }
+
+    const { campaign_id } = requestBody;
+    if (!campaign_id) {
+      return NextResponse.json({ success: false, error: 'Missing campaign_id' }, { status: 400 });
+    }
+
+    // Get job details with proper type casting
+    const { data: job, error: jobError } = await supabase
+      .from('campaign_jobs')
+      .select('*')
+      .eq('id', campaign_id)
+      .single();
+
+    if (jobError || !job) {
+      return NextResponse.json({ success: false, error: jobError?.message || 'Job not found' }, { status: 400 });
+    }
+
+    // Ensure all required data exists with proper null checks
+    const lead = job.lead;
+    const campaign = job.campaign;
+    const sender = job.sender;
+    
+    if (!lead || !campaign || !sender) {
+      return NextResponse.json({ success: false, error: 'Missing required job data' }, { status: 400 });
+    }
+
+    // 2. Prepare Email Content & PDF
+    const offerDetails = generateOfferDetails(lead.assessed_total || 0, `${lead.first_name} ${lead.last_name}`);
+    const personalizationData: PersonalizationData = {
+      ...lead,
+      ...offerDetails,
+      greeting_name: lead.first_name || 'Property Owner',
+      sender_name: sender.sender_name,
+      sender_title: "Acquisitions Director", // TODO: Move to a setting
+      company_name: "True Soul Partners LLC", // TODO: Move to a setting
+    };
+
     // Fetch the template directory path from the database first
     const { data: setting, error: settingError } = await supabase
       .from('application_settings')
@@ -57,42 +94,6 @@ export async function POST(request: NextRequest) {
     // Configure Nunjucks with the path from the database
     const templateDir = path.join(process.cwd(), setting.value);
     const nunjucksEnv: NunjucksEnvironment = configure(templateDir, { autoescape: true });
-
-
-    // 1. Fetch the job and all related data
-    const { data: jobData, error: jobError } = await supabase
-      .from('campaign_jobs')
-      .select(`
-        *,
-        lead:leads(*),
-        campaign:campaigns(*),
-        sender:senders(*)
-      `)
-      .eq('id', job_id)
-      .single();
-
-    if (jobError || !jobData) {
-      throw new Error(`Job with ID ${job_id} not found or failed to fetch. Error: ${jobError?.message}`);
-    }
-
-    job = jobData as any; // Cast to the joined type
-
-    if (!job.lead || !job.campaign || !job.sender) {
-        throw new Error(`Job ${job_id} is missing required relational data (lead, campaign, or sender).`);
-    }
-
-    const { lead, campaign, sender } = job;
-
-    // 2. Prepare Email Content & PDF
-    const offerDetails = generateOfferDetails(lead.assessed_total || 0, `${lead.first_name} ${lead.last_name}`);
-    const personalizationData: PersonalizationData = {
-      ...lead,
-      ...offerDetails,
-      greeting_name: lead.first_name || 'Property Owner',
-      sender_name: sender.sender_name,
-      sender_title: "Acquisitions Director", // TODO: Move to a setting
-      company_name: "True Soul Partners LLC", // TODO: Move to a setting
-    };
 
     const subjectTemplate = nunjucksEnv.renderString(
         job.campaign?.subject_template || "Offer for your property at {{property_address}}",
@@ -120,10 +121,17 @@ export async function POST(request: NextRequest) {
 
     // 4. Update Job Status and Log Outcome
     if (emailResult.success && emailResult.globalMessageId) {
-      await supabase.from('campaign_jobs').update({
-        status: 'completed',
-        updated_at: new Date().toISOString()
-      }).eq('id', job.id);
+      const { error: updateError } = await supabase
+        .from('campaign_jobs')
+        .update({
+          status: 'completed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', job.id);
+
+      if (updateError) {
+        throw new Error(`Failed to update job status: ${updateError.message}`);
+      }
 
       await logJobOutcome(supabase, job.id, 'Email sent successfully.', { messageId: emailResult.globalMessageId });
 
@@ -134,17 +142,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     const errorMessage = error.message || 'An unexpected error occurred.';
-    console.error(`Critical error processing job ${job_id}:`, errorMessage);
-
-    if (job) {
-      await supabase.from('campaign_jobs').update({
-        status: 'failed',
-        retries: (job.retries || 0) + 1,
-        updated_at: new Date().toISOString(),
-      }).eq('id', job.id);
-      await logJobOutcome(supabase, job.id, 'Job processing failed.', { error: errorMessage });
-    }
-
+    console.error('Error in send-email route:', errorMessage);
     return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
   }
 }
