@@ -1,4 +1,3 @@
-// src/components/leads-table.tsx
 import React from "react";
 import useSWR from 'swr';
 import { Icon } from "@iconify/react";
@@ -48,8 +47,8 @@ const formatCurrency = (value: number | null | undefined) => {
 // Column definitions for the table
 const columns = [
   { name: "STATUS", uid: "status", sortable: true },
-  { name: "CONTACTS", uid: "contacts", sortable: false },
-  { name: "ADDRESS", uid: "address", sortable: true },
+  { name: "CONTACTS", uid: "contact_names", sortable: true },
+  { name: "ADDRESS", uid: "property_address", sortable: true },
   { name: "MARKET REGION", uid: "market_region", sortable: true },
   { name: "MARKET VALUE", uid: "market_value", sortable: true },
   { name: "ASSESSED TOTAL", uid: "assessed_total", sortable: true },
@@ -78,7 +77,7 @@ const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "wa
 };
 
 export const LeadsTable: React.FC = () => {
-  const { data: leads, error, isLoading } = useSWR<LeadData[]>('/api/leads', fetcher);
+  const { data: leads, error, isLoading, mutate } = useSWR<LeadData[]>('/api/leads', fetcher);
 
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [selectedPropertyId, setSelectedPropertyId] = React.useState<string | null>(null);
@@ -103,6 +102,11 @@ export const LeadsTable: React.FC = () => {
     onOpen();
   }, [onOpen]);
   
+  const handleCloseModal = () => {
+    mutate(); // Re-fetch data when modal is closed
+    onClose();
+  }
+
   const renderCell = React.useCallback((lead: LeadData, columnKey: React.Key) => {
     switch (columnKey) {
       case "status":
@@ -117,17 +121,17 @@ export const LeadsTable: React.FC = () => {
             {lead.status || "N/A"}
           </Chip>
         );
-      case "contacts":
+      case "contact_names":
         const names = lead.contact_names?.split('|') || [];
         const phones = lead.contact_phones?.split('|') || [];
         const emails = lead.contact_emails?.split('|') || [];
         if (names.every(name => !name)) return "No Contacts";
         return (
-          <div className="text-xs">
+          <div className="text-xs space-y-2">
             {names.map((name, index) => (
-              <div key={index} className="mb-1 last:mb-0">
-                <div className="flex justify-between items-center">
-                  <span className="font-medium truncate">{name || 'N/A'}</span>
+              <div key={index}>
+                <div className="flex justify-between items-center font-medium">
+                  <span className="truncate">{name || 'N/A'}</span>
                   <span className="text-default-500 ml-2 whitespace-nowrap">{phones[index] || ''}</span>
                 </div>
                 <div className="text-default-600 truncate">{emails[index] || ''}</div>
@@ -135,7 +139,7 @@ export const LeadsTable: React.FC = () => {
             ))}
           </div>
         );
-      case "address":
+      case "property_address":
         return (
           <div className="flex items-center gap-2">
             <Icon icon="mdi:map-marker" className="text-red-500 w-5 h-5 flex-shrink-0" />
@@ -181,7 +185,7 @@ export const LeadsTable: React.FC = () => {
       if (first == null) return 1;
       if (second == null) return -1;
       
-      const cmp = first < second ? -1 : first > second ? 1 : 0;
+      const cmp = String(first).localeCompare(String(second), undefined, { numeric: true });
       return sortDescriptor.direction === "descending" ? -cmp : cmp;
     });
 
@@ -302,7 +306,7 @@ export const LeadsTable: React.FC = () => {
       
       <LeadModal
         isOpen={isOpen}
-        onClose={onClose}
+        onClose={handleCloseModal}
         propertyId={selectedPropertyId}
       />
     </>

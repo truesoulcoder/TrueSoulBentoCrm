@@ -1,14 +1,11 @@
 // src/actions/lead-actions.ts
 'use server';
 
-import { createClient } from '@supabase/supabase-js';
+import { createAdminServerClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/client';
 import type { Tables, TablesInsert, TablesUpdate } from '@/types/supabase';
 import { revalidatePath } from 'next/cache';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 // Define types for convenience
 export type Property = Tables<'properties'>;
@@ -24,10 +21,13 @@ export type LeadDetails = {
  * @returns An object containing the property and an array of contacts.
  */
 export async function getLeadDetails(propertyId: string): Promise<LeadDetails | null> {
+  const supabase = await createAdminServerClient();
+  
+  // Explicitly select columns to avoid ambiguity with 'id' vs 'property_id'
   const { data: property, error: propertyError } = await supabase
     .from('properties')
-    .select('*')
-    .eq('id', propertyId)
+    .select('property_id, status, property_address, property_city, property_state, property_postal_code, market_region, market_value, assessed_total, year_built, beds, baths, square_footage, lot_size_sqft, mls_list_price, mls_days_on_market, property_type, notes, user_id, owner_type, assessed_year, avm, mls_baths, mls_beds, mls_garage, mls_list_date, mls_listing_id, mls_photos, mls_price_per_sqft, mls_sale_price, mls_sold_date, mls_sqft, mls_status, mls_year_built, price_per_sqft, wholesale_value, created_at, updated_at')
+    .eq('property_id', propertyId)
     .single();
 
   if (propertyError) {
@@ -59,6 +59,7 @@ export async function saveLead(leadData: {
   property: TablesInsert<'properties'> | TablesUpdate<'properties'>;
   contacts: (TablesInsert<'contacts'> | TablesUpdate<'contacts'>)[];
 }): Promise<{ data: Property | null, error: string | null }> {
+  const supabase = await createAdminServerClient();
   const { property, contacts } = leadData;
 
   try {
@@ -79,8 +80,8 @@ export async function saveLead(leadData: {
 
     } else {
       // --- CREATE ---
-      // Get current user to set as owner
-      const { data: { user } } = await supabase.auth.getUser();
+      const userSupabase = createClient();
+      const { data: { user } } = await userSupabase.auth.getUser();
       if (!user) throw new Error('User not authenticated.');
 
       const propertyToInsert: TablesInsert<'properties'> = {
@@ -114,21 +115,24 @@ export async function saveLead(leadData: {
     if (upsertError) throw new Error(`Failed to upsert contacts: ${upsertError.message}`);
     
     // --- DELETE REMOVED CONTACTS ---
-    const { error: deleteError } = await supabase
-      .from('contacts')
-      .delete()
-      .eq('property_id', savedProperty.property_id)
-      .not('contact_id', 'in', `(${contactIdsToKeep.join(',')})`);
+    if (contactIdsToKeep.length > 0) {
+        const { error: deleteError } = await supabase
+        .from('contacts')
+        .delete()
+        .eq('property_id', savedProperty.property_id)
+        .not('contact_id', 'in', `(${contactIdsToKeep.join(',')})`);
       
-    if (deleteError) {
-        console.warn(`Could not delete removed contacts for property ${savedProperty.property_id}: ${deleteError.message}`);
+        if (deleteError) {
+            console.warn(`Could not delete removed contacts for property ${savedProperty.property_id}: ${deleteError.message}`);
+        }
     }
 
     // Revalidate the path to update the UI
-    revalidatePath('/dashboard'); // Adjust path if your table is on a different page
+    revalidatePath('/');
     return { data: savedProperty, error: null };
 
   } catch (e: any) {
+    console.error("Error in saveLead action:", e.message);
     return { data: null, error: e.message };
   }
 }
@@ -139,6 +143,7 @@ export async function saveLead(leadData: {
  * @returns An object indicating success or failure.
  */
 export async function deleteLead(propertyId: string): Promise<{ success: boolean; error: string | null }> {
+  const supabase = await createAdminServerClient();
   
   try {
     // Delete associated contacts first to satisfy foreign key constraints
@@ -157,9 +162,10 @@ export async function deleteLead(propertyId: string): Promise<{ success: boolean
       
     if (propertyError) throw new Error(`Failed to delete property: ${propertyError.message}`);
 
-    revalidatePath('/dashboard');
+    revalidatePath('/');
     return { success: true, error: null };
   } catch (e: any) {
+    console.error("Error in deleteLead action:", e.message);
     return { success: false, error: e.message };
   }
 }
