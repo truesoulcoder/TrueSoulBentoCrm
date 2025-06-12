@@ -22,7 +22,7 @@ import {
   Input,
 } from "@heroui/react";
 import { Database } from "@/types/supabase";
-import { LeadModal } from "./lead-modal";
+import LeadModal from "./lead-modal";
 
 type LeadData = Database['public']['Views']['properties_with_contacts']['Row'];
 

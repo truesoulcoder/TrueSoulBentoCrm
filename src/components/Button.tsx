@@ -12,6 +12,12 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   className?: string;
   /** Primary color name or hex */
   color?: string;
+  /** Icon or element to render before the children */
+  startContent?: React.ReactNode;
+  /** Icon or element to render after the children */
+  endContent?: React.ReactNode;
+  /** If true, renders a square icon-only button */
+  isIconOnly?: boolean;
   /** Click handler alias for onClick */
   onPress?: React.MouseEventHandler<HTMLButtonElement>;
   /** Show loading indicator */
@@ -19,7 +25,8 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 /**
- * A floating-label UI Button with variant, size, and loading state support.
+ * A floating-label UI Button with variant, size, loading state, optional icons,
+ * and support for an icon-only mode.
  */
 export const Button: React.FC<ButtonProps> = ({
   children,
@@ -27,6 +34,9 @@ export const Button: React.FC<ButtonProps> = ({
   size = 'md',
   className = '',
   color,
+  startContent,
+  endContent,
+  isIconOnly = false,
   onPress,
   isLoading = false,
   disabled,
@@ -44,11 +54,13 @@ export const Button: React.FC<ButtonProps> = ({
     light: 'bg-white shadow-sm hover:shadow-lg',
     outline: 'border border-slate-400 hover:bg-slate-50',
   };
+  const iconOnlyClasses = isIconOnly ? 'p-1' : '';
 
   const styleClasses = clsx(
     base,
     sizeClasses[size],
     variantClasses[variant],
+    iconOnlyClasses,
     className,
     color && `text-[${color}]`
   );
@@ -64,7 +76,11 @@ export const Button: React.FC<ButtonProps> = ({
       {isLoading ? (
         <span className="animate-spin">⏳</span>
       ) : (
-        children
+        <>
+          {startContent && !isIconOnly && <span className="mr-2 inline-flex items-center">{startContent}</span>}
+          {children}
+          {endContent && !isIconOnly && <span className="ml-2 inline-flex items-center">{endContent}</span>}
+        </>
       )}
     </button>
   );

@@ -2,17 +2,37 @@ import React from 'react';
 import { Input, Select, SelectItem, Textarea, Divider } from '@heroui/react';
 import { Button } from './Button';
 import { Icon } from '@iconify/react';
+import { LEAD_STATUS_OPTIONS, CONTACT_ROLE_OPTIONS } from '@/constants/LeadStatus';
 
-interface LeadFormProps {
-  property: any;
-  contacts: any[];
-  onPropertyChange: (name: string, value: any) => void;
-  onContactChange: (index: number, name: string, value: any) => void;
-  addContact: () => void;
-  removeContact: (index: number) => void;
+export interface LeadModalProps {
+  /** Controls the visibility of the modal */
+  isOpen: boolean;
+  /** Called when the modal should close */
+  onClose: () => void;
+  /** ID of the property to load/edit */
+  propertyId: string | null;
+  /** Full property record, if preloaded */
+  property?: any;
+  /** Contacts array, if preloaded */
+  contacts?: any[];
+  /** Change handler for property fields */
+  onPropertyChange?: (name: string, value: any) => void;
+  /** Change handler for contact fields */
+  onContactChange?: (index: number, name: string, value: any) => void;
+  /** Add a new contact entry */
+  addContact?: () => void;
+  /** Remove an existing contact entry by index */
+  removeContact?: (index: number) => void;
 }
 
-export const LeadForm: React.FC<LeadFormProps> = ({ property, contacts, onPropertyChange, onContactChange, addContact, removeContact }) => (
+export const LeadModal: React.FC<LeadModalProps> = ({
+  property = {},
+  contacts = [],
+  onPropertyChange = () => {},
+  onContactChange = () => {},
+  addContact = () => {},
+  removeContact = () => {},
+}) => (
   <div className="space-y-6">
     {/* Property Info Section */}
     <h2 className="text-gray-400 uppercase tracking-wide text-sm">Property Info</h2>
@@ -175,5 +195,5 @@ export const LeadForm: React.FC<LeadFormProps> = ({ property, contacts, onProper
     />
   </div>
 );
-
+export default LeadModal;
 // Note: LEAD_STATUS_OPTIONS and CONTACT_ROLE_OPTIONS should be imported or defined above.
