@@ -1,9 +1,8 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
-  const response = NextResponse.next({
+  let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
@@ -18,34 +17,46 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
+          // The `set` method in the middleware is called to update the session.
+          // We need to update the cookies on both the request and the response.
+          request.cookies.set({ name, value, ...options });
+          response = NextResponse.next({
+            request: { headers: request.headers },
+          });
           response.cookies.set({ name, value, ...options });
         },
         remove(name: string, options: CookieOptions) {
+          // The `remove` method is called to delete the session.
+          request.cookies.set({ name, value: '', ...options });
+          response = NextResponse.next({
+            request: { headers: request.headers },
+          });
           response.cookies.set({ name, value: '', ...options });
         },
       },
     }
   );
 
-  const { data: { session } } = await supabase.auth.getSession();
-  
+  // This will refresh the session if it's expired
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   const { pathname } = request.nextUrl;
-  
-  // Define the login page path
   const loginPath = '/login';
 
   // If the user is not authenticated and is trying to access a protected route
-  if (!session && pathname !== loginPath) {
+  if (!user && pathname !== loginPath) {
     // Redirect them to the login page
     return NextResponse.redirect(new URL(loginPath, request.url));
   }
 
   // If the user is authenticated and tries to access the login page
-  if (session && pathname === loginPath) {
+  if (user && pathname === loginPath) {
     // Redirect them to the main dashboard page
     return NextResponse.redirect(new URL('/', request.url));
   }
-  
+
   return response;
 }
 
