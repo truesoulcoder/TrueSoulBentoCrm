@@ -1,7 +1,7 @@
 // src/components/maps/StreetViewMap.tsx
 'use client';
 
-import { Map, AdvancedMarker } from '@vis.gl/react-google-maps';
+import { Map, AdvancedMarker, ColorScheme, RenderingType } from '@vis.gl/react-google-maps';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@heroui/react';
@@ -139,7 +139,6 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ address }) => {
     mapTypeControl: false,
     fullscreenControl: false,
     zoomControl: true,
-    mapId: process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID,
   };
 
   return (
@@ -169,7 +168,12 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ address }) => {
 
       {(!showStreetView || !hasStreetView) && position && ( // Show map if not showing street view OR street view not available but position is
         <div style={{ width: '100%', height: '100%', display: (showStreetView && hasStreetView) ? 'none': 'block', borderRadius: '0.5rem', overflow: 'hidden' }}>
-          <Map {...mapOptions}>
+          <Map
+            {...mapOptions}
+            mapId={process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID}
+            colorScheme={ColorScheme.LIGHT}
+            renderingType={RenderingType.VECTOR}
+          >
             <AdvancedMarker position={position} />
           </Map>
         </div>

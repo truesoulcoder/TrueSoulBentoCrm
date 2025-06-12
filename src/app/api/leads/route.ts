@@ -1,11 +1,11 @@
 // src/app/api/leads/route.ts
 import { createClient } from '@supabase/supabase-js';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server'; // Import NextRequest
 import type { Database } from '@/types/supabase';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) { // Changed to NextRequest
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -14,47 +14,30 @@ export async function GET() {
     return NextResponse.json({ error: "Server configuration error: Missing Supabase credentials." }, { status: 500 });
   }
 
-  // --- DIAGNOSTIC STEP: Test basic network connectivity ---
-  try {
-    console.log(`[DIAGNOSTIC] Attempting direct fetch to: ${supabaseUrl}`);
-    const diagnosticUrl = `${supabaseUrl}/rest/v1/properties_with_contacts?select=property_id&limit=1`;
-    
-    const res = await fetch(diagnosticUrl, {
-      headers: {
-        'apikey': serviceKey,
-        'Authorization': `Bearer ${serviceKey}`,
-      },
-      cache: 'no-store',
-    });
-
-    console.log(`[DIAGNOSTIC] Direct fetch responded with status: ${res.status}`);
-    
-    if (!res.ok) {
-      const errorBody = await res.text();
-      // This is not a network failure, but a Supabase API error (e.g., wrong key, RLS). This is still a "successful" connection.
-      console.error(`[DIAGNOSTIC] Direct fetch failed with status ${res.status}. Response: ${errorBody}`);
-    } else {
-      console.log(`[DIAGNOSTIC] Direct network connection to Supabase is OK.`);
-    }
-  } catch (e: any) {
-    console.error('[DIAGNOSTIC] The direct fetch failed entirely. This confirms a network, DNS, or firewall issue.', e);
-    return NextResponse.json(
-      { 
-        error: 'Failed to connect to the database service. This is likely a network or environment variable issue.',
-        details: e.message
-      }, 
-      { status: 500 }
-    );
-  }
-  // --- END DIAGNOSTIC STEP ---
-
-  // If diagnostics passed, attempt the call with the Supabase client
   const supabase = createClient<Database>(supabaseUrl, serviceKey);
+  const { searchParams } = new URL(request.url);
+  const search = searchParams.get('search') || '';
 
   try {
-    const { data, error, status } = await supabase
+    let query = supabase
       .from('properties_with_contacts')
       .select('*');
+
+    // If a search term exists, apply a filter across multiple fields
+    if (search) {
+      const searchTerm = `%${search}%`;
+      query = query.or(
+        `contact_names.ilike.${searchTerm},` +
+        `property_address.ilike.${searchTerm},` +
+        `property_city.ilike.${searchTerm},` +
+        `status.ilike.${searchTerm}`
+      );
+    } else {
+      // If no search, limit the initial load to 1000 records
+      query = query.limit(1000);
+    }
+
+    const { data, error, status } = await query;
 
     if (error) {
       console.error('Supabase client error fetching leads:', { message: error.message, details: error.details, status: status });
@@ -66,7 +49,7 @@ export async function GET() {
 
     return NextResponse.json(data);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred inside the Supabase client block.';
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     console.error('Unexpected error in GET /api/leads:', errorMessage);
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }

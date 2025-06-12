@@ -1,3 +1,4 @@
+// src/components/leads-table.tsx
 import React from "react";
 import useSWR from 'swr';
 import { Icon } from "@iconify/react";
@@ -70,12 +71,21 @@ const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "wa
 };
 
 export const LeadsTable: React.FC = () => {
-  const { data: leads, error, isLoading, mutate } = useSWR<LeadData[]>('/api/leads', fetcher);
+  const [filterValue, setFilterValue] = React.useState("");
+  // NOTE: For better performance, consider debouncing the filterValue before passing it to SWR.
+  
+  // --- MODIFICATION START ---
+  // SWR now uses a dynamic key that includes the search filter.
+  // This will automatically re-fetch data from the API when `filterValue` changes.
+  const { data: leads, error, isLoading, mutate } = useSWR<LeadData[]>(
+    `/api/leads?search=${filterValue}`, 
+    fetcher
+  );
+  // --- MODIFICATION END ---
 
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [selectedPropertyId, setSelectedPropertyId] = React.useState<string | null>(null);
-
-  const [filterValue, setFilterValue] = React.useState("");
+  
   const [page, setPage] = React.useState(1);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
   
@@ -86,37 +96,17 @@ export const LeadsTable: React.FC = () => {
   
   const [selectedKeys, setSelectedKeys] = React.useState(new Set<string>());
 
-  const hasSearchFilter = Boolean(filterValue);
-
-  const filteredItems = React.useMemo(() => {
-    let filteredLeads = [...(leads || [])];
-
-    if (hasSearchFilter) {
-      filteredLeads = filteredLeads.filter((lead) => {
-        const search = filterValue.toLowerCase();
-        const searchFields = [
-          lead.contact_names,
-          lead.contact_emails,
-          lead.property_address,
-          lead.property_city,
-          lead.property_state,
-          lead.property_postal_code,
-          lead.market_region,
-          lead.status,
-        ];
-        return searchFields.some(field => 
-          String(field).toLowerCase().includes(search)
-        );
-      });
-    }
-    return filteredLeads;
-  }, [leads, filterValue]);
+  // --- MODIFICATION: REMOVED `filteredItems` useMemo block ---
+  // Filtering is now done on the server, so we no longer need this.
 
   const items = React.useMemo(() => {
     const start = (page - 1) * rowsPerPage;
     const end = start + rowsPerPage;
 
-    const sortedLeads = [...filteredItems].sort((a, b) => {
+    // Use `leads` directly from SWR, which is already filtered by the API
+    const itemsToProcess = leads || [];
+
+    const sortedLeads = [...itemsToProcess].sort((a, b) => {
       const first = a[sortDescriptor.column as keyof LeadData];
       const second = b[sortDescriptor.column as keyof LeadData];
 
@@ -129,7 +119,7 @@ export const LeadsTable: React.FC = () => {
     });
 
     return sortedLeads.slice(start, end);
-  }, [page, filteredItems, rowsPerPage, sortDescriptor]);
+  }, [page, leads, rowsPerPage, sortDescriptor]);
 
   const onSearchChange = React.useCallback((value?: string) => {
     if (value) {
@@ -161,6 +151,7 @@ export const LeadsTable: React.FC = () => {
   }
 
   const renderCell = React.useCallback((lead: LeadData, columnKey: React.Key) => {
+    // ... (This function remains unchanged)
     switch (columnKey) {
       case "status":
         const statusKey = lead.status as keyof typeof statusColorMap;
@@ -222,7 +213,7 @@ export const LeadsTable: React.FC = () => {
           <Input
             isClearable
             className="w-full sm:max-w-[44%]"
-            placeholder="Search leads..."
+            placeholder="Search all leads..."
             startContent={<Icon icon="lucide:search" />}
             value={filterValue}
             onClear={onClear}
@@ -234,13 +225,15 @@ export const LeadsTable: React.FC = () => {
             </Button>
           </div>
         </div>
-        <span className="text-default-400 text-small">Total {filteredItems.length} leads</span>
+        {/* MODIFICATION: Use `leads?.length` for the total count */}
+        <span className="text-default-400 text-small">Total {leads?.length || 0} leads found</span>
       </div>
     );
-  }, [filterValue, onSearchChange, onClear, handleAddLead, filteredItems.length]);
+  }, [filterValue, onSearchChange, onClear, handleAddLead, leads?.length]);
 
   const bottomContent = React.useMemo(() => {
-    const totalPages = filteredItems ? Math.ceil(filteredItems.length / rowsPerPage) : 0;
+    // MODIFICATION: Use `leads?.length` to calculate total pages
+    const totalPages = leads ? Math.ceil(leads.length / rowsPerPage) : 0;
     return (
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 py-2">
         <div className="flex items-center gap-2">
@@ -288,13 +281,13 @@ export const LeadsTable: React.FC = () => {
         </div>
       </div>
     );
-  }, [page, filteredItems.length, rowsPerPage]);
+  }, [page, leads?.length, rowsPerPage]);
 
   return (
     <>
       <div className="w-full h-full flex flex-col">
         <Table
-          aria-label="Leads table with client-side filtering"
+          aria-label="Leads table with server-side filtering"
           isHeaderSticky
           selectionMode="multiple"
           selectedKeys={selectedKeys}
@@ -313,7 +306,7 @@ export const LeadsTable: React.FC = () => {
             items={items} 
             isLoading={isLoading}
             loadingContent={<Spinner label="Loading leads..." />}
-            emptyContent={hasSearchFilter ? "No leads found." : "No leads to display."}
+            emptyContent={filterValue ? "No leads found matching your search." : "No leads to display."}
           >
             {(item) => (<TableRow key={item.property_id}>{(columnKey) => <TableCell>{renderCell(item, columnKey)}</TableCell>}</TableRow>)}
           </TableBody>
