@@ -237,7 +237,7 @@ export const LeadsTable: React.FC = () => {
         <span className="text-default-400 text-small">Total {filteredItems.length} leads</span>
       </div>
     );
-  }, [leads, filterValue, onSearchChange, onClear, handleAddLead, filteredItems.length]);
+  }, [filterValue, onSearchChange, onClear, handleAddLead, filteredItems.length]);
 
   const bottomContent = React.useMemo(() => {
     const totalPages = filteredItems ? Math.ceil(filteredItems.length / rowsPerPage) : 0;

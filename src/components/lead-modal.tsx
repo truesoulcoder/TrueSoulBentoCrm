@@ -69,10 +69,12 @@ export const LeadModal: React.FC<LeadModalProps> = ({ propertyId, isOpen, onClos
         setProperty(data.property);
         setContacts(data.contacts.length > 0 ? data.contacts : [{...newContactTemplate}]);
       } else {
-        setError('Failed to load lead data. Please close and try again.');
+        // Instead of closing, display the error inside the modal.
+        setError('Failed to load lead data. The lead may not exist or there was a server error.');
       }
     } catch (err: any) {
-      setError(err.message || 'An unknown error occurred.');
+      // Catch any other unexpected errors from the action.
+      setError(err.message || 'An unknown error occurred while fetching data.');
     } finally {
       setIsLoading(false);
     }
@@ -80,7 +82,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ propertyId, isOpen, onClos
 
   useEffect(() => {
     if (isOpen) {
-        setError(null);
+        setError(null); // Clear previous errors when modal opens
         if (propertyId) {
             loadLeadData(propertyId);
         } else {
@@ -170,8 +172,10 @@ export const LeadModal: React.FC<LeadModalProps> = ({ propertyId, isOpen, onClos
           {isLoading ? (
             <div className="flex justify-center items-center h-96"><Spinner label="Loading Lead..." /></div>
           ) : error ? (
-            <div className="flex justify-center items-center h-96 p-8 text-center text-danger">
-              <p>{error}</p>
+            <div className="flex flex-col justify-center items-center h-96 p-8 text-center text-danger">
+                <Icon icon="lucide:server-crash" className="w-16 h-16 mb-4" />
+                <p className="text-lg font-semibold">Could Not Load Lead</p>
+                <p className="text-sm">{error}</p>
             </div>
           ) : (
             <>
@@ -200,7 +204,9 @@ export const LeadModal: React.FC<LeadModalProps> = ({ propertyId, isOpen, onClos
                   <Input label="Square Footage" name="square_footage" type="number" value={String(property.square_footage ?? '')} onValueChange={(v) => handlePropertyChange('square_footage', v)} />
                   <Input label="Lot Size (sqft)" name="lot_size_sqft" type="number" value={String(property.lot_size_sqft ?? '')} onValueChange={(v) => handlePropertyChange('lot_size_sqft', v)} />
                 </div>
+                
                 <Divider />
+                
                 <div className="flex justify-between items-center">
                     <h3 className="text-lg font-semibold text-foreground">Contact Details</h3>
                     <Button size="sm" color="primary" variant="flat" startContent={<Icon icon="lucide:plus" />} onPress={addContact}>Add Contact</Button>
@@ -220,7 +226,9 @@ export const LeadModal: React.FC<LeadModalProps> = ({ propertyId, isOpen, onClos
                         </div>
                     ))}
                 </div>
+
                 <Divider />
+                
                 <h3 className="text-lg font-semibold text-foreground">Notes</h3>
                 <Textarea label="Notes" name="notes" value={property.notes || ''} onValueChange={(v) => handlePropertyChange('notes', v)} minRows={10} />
               </div>
@@ -232,7 +240,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ propertyId, isOpen, onClos
             {error && !isSaving && <p className="text-sm text-danger mr-auto">{error}</p>}
             {!propertyId ? null : ( <Button color="danger" variant="light" onPress={handleDelete} isLoading={isDeleting} disabled={isDeleting || isSaving}>Delete Lead</Button>)}
             <div className='flex-grow' />
-            <Button variant="flat" onPress={onClose} disabled={isSaving || isSaving}>Cancel</Button>
+            <Button variant="flat" onPress={onClose} disabled={isSaving || isDeleting}>Cancel</Button>
             <Button color="primary" onPress={handleSave} isLoading={isSaving} disabled={isDeleting || isSaving}>{propertyId ? 'Save Changes' : 'Create Lead'}</Button>
         </ModalFooter>
       </ModalContent>

@@ -9,7 +9,7 @@ import { EmailSelector } from "./email-selector";
 import { TemplatePreview } from "./template-preview";
 import { CampaignSettings } from "./campaign-settings";
 import { LeadsTable } from "./leads-table";
-import { LeadsUpload } from "./leads-upload"; // Import the new component
+import { LeadsUpload } from "./leads-upload";
 
 // Fix CSS imports for react-grid-layout
 import "react-grid-layout/css/styles.css";
@@ -75,7 +75,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       minSize: { w: 1, h: 2 },
     },
     {
-      i: "leads-upload", // Add the new uploader component
+      i: "leads-upload",
       title: "Leads Uploader",
       subtitle: "Upload new leads via CSV",
       component: <LeadsUpload />,
@@ -132,36 +132,37 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
     }
   };
 
+  // Updated layouts with "leads" at the top (y: 0)
   const defaultLayouts: Layouts = {
     lg: [
-      { i: "status", x: 0, y: 0, w: 1, h: 2 },
-      { i: "chart", x: 1, y: 0, w: 2, h: 2 },
-      { i: "emails", x: 3, y: 0, w: 1, h: 2 },
-      { i: "console", x: 0, y: 2, w: 1, h: 2 },
-      { i: "leads-upload", x: 1, y: 2, w: 1, h: 2 },
-      { i: "template", x: 2, y: 2, w: 1, h: 2 },
-      { i: "settings", x: 3, y: 2, w: 1, h: 2 },
-      { i: "leads", x: 0, y: 4, w: 4, h: 4 },
+      { i: "leads", x: 0, y: 0, w: 4, h: 4 },
+      { i: "status", x: 0, y: 4, w: 1, h: 2 },
+      { i: "chart", x: 1, y: 4, w: 2, h: 2 },
+      { i: "emails", x: 3, y: 4, w: 1, h: 2 },
+      { i: "console", x: 0, y: 6, w: 2, h: 2 },
+      { i: "leads-upload", x: 2, y: 6, w: 2, h: 2 },
+      { i: "template", x: 0, y: 8, w: 2, h: 2 },
+      { i: "settings", x: 2, y: 8, w: 2, h: 2 },
     ],
     md: [
-      { i: "status", x: 0, y: 0, w: 1, h: 2 },
-      { i: "chart", x: 1, y: 0, w: 2, h: 2 },
-      { i: "emails", x: 0, y: 2, w: 1, h: 2 },
-      { i: "console", x: 1, y: 2, w: 2, h: 2 },
-      { i: "leads-upload", x: 0, y: 4, w: 1, h: 2 },
-      { i: "template", x: 1, y: 4, w: 1, h: 2 },
-      { i: "settings", x: 2, y: 4, w: 1, h: 2 },
-      { i: "leads", x: 0, y: 6, w: 4, h: 4 },
+      { i: "leads", x: 0, y: 0, w: 3, h: 4 },
+      { i: "status", x: 0, y: 4, w: 1, h: 2 },
+      { i: "chart", x: 1, y: 4, w: 2, h: 2 },
+      { i: "emails", x: 0, y: 6, w: 1, h: 2 },
+      { i: "console", x: 1, y: 6, w: 2, h: 2 },
+      { i: "leads-upload", x: 0, y: 8, w: 2, h: 2 },
+      { i: "template", x: 0, y: 10, w: 3, h: 2 },
+      { i: "settings", x: 0, y: 12, w: 3, h: 2 },
     ],
     sm: [
-      { i: "status", x: 0, y: 0, w: 1, h: 2 },
-      { i: "chart", x: 0, y: 2, w: 1, h: 2 },
-      { i: "emails", x: 0, y: 4, w: 1, h: 2 },
-      { i: "console", x: 0, y: 6, w: 1, h: 2 },
-      { i: "leads-upload", x: 0, y: 8, w: 1, h: 2 },
-      { i: "template", x: 0, y: 10, w: 1, h: 2 },
-      { i: "settings", x: 0, y: 12, w: 1, h: 2 },
-      { i: "leads", x: 0, y: 14, w: 1, h: 4 },
+      { i: "leads", x: 0, y: 0, w: 1, h: 4 },
+      { i: "status", x: 0, y: 4, w: 1, h: 2 },
+      { i: "chart", x: 0, y: 6, w: 1, h: 2 },
+      { i: "emails", x: 0, y: 8, w: 1, h: 2 },
+      { i: "console", x: 0, y: 10, w: 1, h: 2 },
+      { i: "leads-upload", x: 0, y: 12, w: 1, h: 2 },
+      { i: "template", x: 0, y: 14, w: 1, h: 2 },
+      { i: "settings", x: 0, y: 16, w: 1, h: 2 },
     ],
   };
 
