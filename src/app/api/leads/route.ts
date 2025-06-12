@@ -1,11 +1,17 @@
 // src/app/api/leads/route.ts
-import { createAdminServerClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import type { Database } from '@/types/supabase';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const supabase = await createAdminServerClient();
+  // Use the standard Supabase client for server-to-server communication.
+  // This avoids potential issues with the SSR client in pure API routes.
+  const supabase = createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
   try {
     const { data, error } = await supabase
