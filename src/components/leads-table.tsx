@@ -1,4 +1,6 @@
+// src/components/leads-table.tsx
 import React from "react";
+import useSWR from 'swr';
 import { Icon } from "@iconify/react";
 import {
   Table,
@@ -9,350 +11,200 @@ import {
   TableCell,
   Pagination,
   Button,
-  useDisclosure,
   Dropdown,
   DropdownTrigger,
   DropdownMenu,
   DropdownItem,
-  Checkbox,
   Tooltip,
   Chip,
+  Spinner,
+  useDisclosure,
 } from "@heroui/react";
+import { Database } from "@/types/supabase";
 import { LeadModal } from "./lead-modal";
 
-// Define the Lead type
-export interface Lead {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  company: string;
-  status: "new" | "contacted" | "qualified" | "proposal" | "closed" | "lost";
-  source: string;
-  dateAdded: string;
-}
+// Define the Lead type based on the properties_with_contacts view
+type LeadData = Database['public']['Views']['properties_with_contacts']['Row'];
 
-// Sample data for leads
-const initialLeads: Lead[] = [
-  {
-    id: "1",
-    name: "John Smith",
-    email: "john.smith@example.com",
-    phone: "(555) 123-4567",
-    company: "Acme Inc.",
-    status: "new",
-    source: "Website",
-    dateAdded: "2023-06-15",
-  },
-  {
-    id: "2",
-    name: "Sarah Johnson",
-    email: "sarah.j@techcorp.com",
-    phone: "(555) 987-6543",
-    company: "Tech Corp",
-    status: "contacted",
-    source: "LinkedIn",
-    dateAdded: "2023-06-18",
-  },
-  {
-    id: "3",
-    name: "Michael Brown",
-    email: "mbrown@globalfirm.com",
-    phone: "(555) 456-7890",
-    company: "Global Firm",
-    status: "qualified",
-    source: "Referral",
-    dateAdded: "2023-06-20",
-  },
-  {
-    id: "4",
-    name: "Emily Davis",
-    email: "emily.davis@innovate.co",
-    phone: "(555) 234-5678",
-    company: "Innovate Co",
-    status: "proposal",
-    source: "Trade Show",
-    dateAdded: "2023-06-22",
-  },
-  {
-    id: "5",
-    name: "Robert Wilson",
-    email: "rwilson@megacorp.com",
-    phone: "(555) 876-5432",
-    company: "Mega Corp",
-    status: "closed",
-    source: "Email Campaign",
-    dateAdded: "2023-06-25",
-  },
-  {
-    id: "6",
-    name: "Jennifer Lee",
-    email: "jlee@startupinc.com",
-    phone: "(555) 345-6789",
-    company: "Startup Inc",
-    status: "lost",
-    source: "Cold Call",
-    dateAdded: "2023-06-28",
-  },
-  {
-    id: "7",
-    name: "David Martinez",
-    email: "dmartinez@enterprise.com",
-    phone: "(555) 654-3210",
-    company: "Enterprise LLC",
-    status: "new",
-    source: "Website",
-    dateAdded: "2023-07-01",
-  },
-  {
-    id: "8",
-    name: "Lisa Thompson",
-    email: "lisa.t@growthco.com",
-    phone: "(555) 789-0123",
-    company: "Growth Co",
-    status: "contacted",
-    source: "LinkedIn",
-    dateAdded: "2023-07-03",
-  },
-  {
-    id: "9",
-    name: "Kevin Anderson",
-    email: "kevin.a@bigbusiness.com",
-    phone: "(555) 321-0987",
-    company: "Big Business",
-    status: "qualified",
-    source: "Webinar",
-    dateAdded: "2023-07-05",
-  },
-  {
-    id: "10",
-    name: "Amanda White",
-    email: "awhite@techstart.com",
-    phone: "(555) 210-9876",
-    company: "TechStart",
-    status: "proposal",
-    source: "Conference",
-    dateAdded: "2023-07-08",
-  },
-  {
-    id: "11",
-    name: "Thomas Clark",
-    email: "tclark@industrygroup.com",
-    phone: "(555) 432-1098",
-    company: "Industry Group",
-    status: "closed",
-    source: "Partner Referral",
-    dateAdded: "2023-07-10",
-  },
-  {
-    id: "12",
-    name: "Olivia Rodriguez",
-    email: "orodriguez@newventure.com",
-    phone: "(555) 567-8901",
-    company: "New Venture",
-    status: "lost",
-    source: "Social Media",
-    dateAdded: "2023-07-12",
-  },
+// API fetcher for SWR
+const fetcher = (url: string) => fetch(url).then(res => {
+  if (!res.ok) {
+    throw new Error('An error occurred while fetching the data.');
+  }
+  return res.json();
+});
+
+// Helper to format currency
+const formatCurrency = (value: number | null | undefined) => {
+  if (value === null || value === undefined) return "N/A";
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
+// Column definitions for the table
+const columns = [
+  { name: "STATUS", uid: "status", sortable: true },
+  { name: "CONTACTS", uid: "contacts", sortable: false },
+  { name: "ADDRESS", uid: "address", sortable: true },
+  { name: "MARKET REGION", uid: "market_region", sortable: true },
+  { name: "MARKET VALUE", uid: "market_value", sortable: true },
+  { name: "ASSESSED TOTAL", uid: "assessed_total", sortable: true },
+  { name: "YEAR BUILT", uid: "year_built", sortable: true },
+  { name: "BEDS", uid: "beds", sortable: true },
+  { name: "BATHS", uid: "baths", sortable: true },
+  { name: "SQFT", uid: "square_footage", sortable: true },
+  { name: "MLS LIST PRICE", uid: "mls_list_price", sortable: true },
+  { name: "DAYS ON MARKET", uid: "mls_days_on_market", sortable: true },
+  { name: "ACTIONS", uid: "actions", sortable: false },
 ];
 
 // Status color mapping
-const statusColorMap = {
-  new: "primary",
-  contacted: "secondary",
-  qualified: "success",
-  proposal: "warning",
-  closed: "success",
-  lost: "danger",
+const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "warning" | "danger" | "default" } = {
+  "New Lead": "primary",
+  "Attempted to Contact": "secondary",
+  "Contacted": "secondary",
+  "Working/In Progress": "default",
+  "Contract Sent": "warning",
+  "Qualified": "success",
+  "Unqualified/Disqualified": "default",
+  "Nurture": "secondary",
+  "Meeting Set": "success",
+  "Closed - Converted/Customer": "success",
+  "Closed - Not Converted/Opportunity Lost": "danger",
 };
-
-// Status name mapping
-const statusNameMap = {
-  new: "New",
-  contacted: "Contacted",
-  qualified: "Qualified",
-  proposal: "Proposal",
-  closed: "Closed Won",
-  lost: "Closed Lost",
-};
-
-// Column definitions for sorting
-const columns = [
-  { name: "NAME", uid: "name", sortable: true },
-  { name: "EMAIL", uid: "email", sortable: true },
-  { name: "COMPANY", uid: "company", sortable: true },
-  { name: "STATUS", uid: "status", sortable: true },
-  { name: "SOURCE", uid: "source", sortable: true },
-  { name: "DATE ADDED", uid: "dateAdded", sortable: true },
-  { name: "ACTIONS", uid: "actions" },
-];
 
 export const LeadsTable: React.FC = () => {
-  // State for leads data
-  const [leads, setLeads] = React.useState<Lead[]>(initialLeads);
-  
-  // State for pagination
+  const { data: leads, error, isLoading } = useSWR<LeadData[]>('/api/leads', fetcher);
+
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [selectedPropertyId, setSelectedPropertyId] = React.useState<string | null>(null);
+
   const [page, setPage] = React.useState(1);
-  const [rowsPerPage, setRowsPerPage] = React.useState(5);
+  const [rowsPerPage, setRowsPerPage] = React.useState(10);
   
-  // State for sorting
   const [sortDescriptor, setSortDescriptor] = React.useState({
-    column: "dateAdded",
-    direction: "descending",
+    column: "market_value",
+    direction: "descending" as "ascending" | "descending",
   });
   
-  // State for selected rows
-  const [selectedKeys, setSelectedKeys] = React.useState(new Set<string>([]));
-  
-  // Modal states
-  const { isOpen, onOpen, onClose, onOpenChange } = useDisclosure();
-  const [currentLead, setCurrentLead] = React.useState<Lead | null>(null);
-  const [isNewLead, setIsNewLead] = React.useState(false);
-
-  // Handlers with proper dependencies
-  const handleRowClick = React.useCallback((lead: Lead) => {
-    setCurrentLead(lead);
-    setIsNewLead(false);
-    onOpen();
-  }, [onOpen]);
+  const [selectedKeys, setSelectedKeys] = React.useState(new Set<string>());
 
   const handleAddLead = React.useCallback(() => {
-    setCurrentLead({
-      id: '',
-      name: '',
-      email: '',
-      phone: '',
-      company: '',
-      status: 'new',
-      source: '',
-      dateAdded: new Date().toISOString().split('T')[0],
-    });
-    setIsNewLead(true);
+    setSelectedPropertyId(null);
     onOpen();
   }, [onOpen]);
 
-  const handleDeleteLead = React.useCallback((id: string) => {
-    setLeads(prevLeads => prevLeads.filter(lead => lead.id !== id));
-    onClose();
-  }, [onClose]);
-
-  const handleDeleteSelected = React.useCallback(() => {
-    setLeads(prevLeads => prevLeads.filter(lead => !selectedKeys.has(lead.id)));
-    setSelectedKeys(new Set());
-    onClose();
-  }, [onClose, selectedKeys]);
-
-  // Handle save lead (new or edit)
-  const handleSaveLead = (lead: Lead) => {
-    if (isNewLead) {
-      // Add new lead with generated ID
-      const newLead = {
-        ...lead,
-        id: (Math.max(...leads.map(l => parseInt(l.id))) + 1).toString(),
-        dateAdded: new Date().toISOString().split('T')[0],
-      };
-      setLeads([...leads, newLead]);
-    } else {
-      // Update existing lead
-      setLeads(leads.map(l => l.id === lead.id ? lead : l));
-    }
-    onClose();
-  };
-
-  // Render cell content based on column
-  const renderCell = React.useCallback((lead: Lead, columnKey: React.Key) => {
-    const cellValue = lead[columnKey as keyof Lead];
-
+  const handleEditLead = React.useCallback((propertyId: string) => {
+    setSelectedPropertyId(propertyId);
+    onOpen();
+  }, [onOpen]);
+  
+  const renderCell = React.useCallback((lead: LeadData, columnKey: React.Key) => {
     switch (columnKey) {
       case "status":
+        const statusKey = lead.status as keyof typeof statusColorMap;
         return (
           <Chip
             className="capitalize"
-            color={statusColorMap[lead.status as keyof typeof statusColorMap] as any}
+            color={statusColorMap[statusKey] || "default"}
             size="sm"
             variant="flat"
           >
-            {statusNameMap[lead.status as keyof typeof statusNameMap]}
+            {lead.status || "N/A"}
           </Chip>
         );
+      case "contacts":
+        const names = lead.contact_names?.split('|') || [];
+        const phones = lead.contact_phones?.split('|') || [];
+        const emails = lead.contact_emails?.split('|') || [];
+        if (names.every(name => !name)) return "No Contacts";
+        return (
+          <div className="text-xs">
+            {names.map((name, index) => (
+              <div key={index} className="mb-1 last:mb-0">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium truncate">{name || 'N/A'}</span>
+                  <span className="text-default-500 ml-2 whitespace-nowrap">{phones[index] || ''}</span>
+                </div>
+                <div className="text-default-600 truncate">{emails[index] || ''}</div>
+              </div>
+            ))}
+          </div>
+        );
+      case "address":
+        return (
+          <div className="flex items-center gap-2">
+            <Icon icon="mdi:map-marker" className="text-red-500 w-5 h-5 flex-shrink-0" />
+            <div>
+              <div className="font-medium">{lead.property_address}</div>
+              <div className="text-xs text-default-500">{`${lead.property_city}, ${lead.property_state} ${lead.property_postal_code}`}</div>
+            </div>
+          </div>
+        );
+      case "market_value":
+        return formatCurrency(lead.market_value);
+      case "assessed_total":
+        return formatCurrency(lead.assessed_total);
+      case "mls_list_price":
+        return formatCurrency(lead.mls_list_price);
       case "actions":
         return (
-          <div className="relative flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <div className="relative flex items-center gap-2">
             <Tooltip content="Edit lead">
-              <Button 
-                isIconOnly 
-                size="sm" 
-                variant="light"
-                onPress={() => handleRowClick(lead)}
-              >
+              <Button isIconOnly size="sm" variant="light" onPress={() => handleEditLead(lead.property_id!)}>
                 <Icon icon="lucide:edit" className="text-default-500" width={18} />
-              </Button>
-            </Tooltip>
-            <Tooltip color="danger" content="Delete lead">
-              <Button 
-                isIconOnly 
-                size="sm" 
-                variant="light" 
-                color="danger"
-                onPress={() => handleDeleteLead(lead.id)}
-              >
-                <Icon icon="lucide:trash-2" width={18} />
               </Button>
             </Tooltip>
           </div>
         );
       default:
-        return cellValue;
+        const value = lead[columnKey as keyof LeadData];
+        return value === null || value === undefined ? "N/A" : String(value);
     }
-  }, [handleDeleteLead, handleRowClick]);
+  }, [handleEditLead]);
 
-  // Fix RowProps type error
-  const renderRow = React.useCallback((item: Lead) => {
-    return (
-      <TableRow key={item.id}>
-        {(columnKey) => (
-          <TableCell>
-            {renderCell(item, columnKey)}
-          </TableCell>
-        )}
-      </TableRow>
-    );
-  }, [renderCell]);
+  const items = React.useMemo(() => {
+    if (!leads) return [];
+    
+    const start = (page - 1) * rowsPerPage;
+    const end = start + rowsPerPage;
 
-  // Top content with add button and delete selected
+    const sortedLeads = [...leads].sort((a, b) => {
+      const first = a[sortDescriptor.column as keyof LeadData];
+      const second = b[sortDescriptor.column as keyof LeadData];
+
+      if (first == null && second == null) return 0;
+      if (first == null) return 1;
+      if (second == null) return -1;
+      
+      const cmp = first < second ? -1 : first > second ? 1 : 0;
+      return sortDescriptor.direction === "descending" ? -cmp : cmp;
+    });
+
+    return sortedLeads.slice(start, end);
+  }, [page, leads, rowsPerPage, sortDescriptor]);
+
   const topContent = React.useMemo(() => {
     return (
       <div className="flex flex-col gap-4">
         <div className="flex justify-between items-center">
-          <div className="flex gap-3">
-            <Button 
-              color="primary" 
-              startContent={<Icon icon="lucide:plus" />}
-              onPress={handleAddLead}
-            >
+          <Button color="primary" startContent={<Icon icon="lucide:plus" />} onPress={handleAddLead}>
               Add Lead
-            </Button>
-            {selectedKeys.size > 0 && (
-              <Button 
-                color="danger" 
-                variant="flat"
-                startContent={<Icon icon="lucide:trash-2" />}
-                onPress={handleDeleteSelected}
-              >
-                Delete Selected
-              </Button>
-            )}
-          </div>
+          </Button>
           <span className="text-default-500 text-small">
-            Total {leads.length} leads
+            Total {leads ? leads.length : 0} leads
           </span>
         </div>
       </div>
     );
-  }, [handleAddLead, handleDeleteSelected, selectedKeys.size, leads.length]);
+  }, [leads, handleAddLead]);
 
-  // Bottom content with pagination
   const bottomContent = React.useMemo(() => {
+    const totalPages = leads ? Math.ceil(leads.length / rowsPerPage) : 0;
     return (
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 py-2">
         <div className="flex items-center gap-2">
@@ -370,14 +222,14 @@ export const LeadsTable: React.FC = () => {
               selectionMode="single"
               selectedKeys={new Set([rowsPerPage.toString()])}
               onSelectionChange={(keys) => {
-                const value = Array.from(keys)[0];
+                const value = Array.from(keys as Set<React.Key>)[0];
                 setRowsPerPage(Number(value));
                 setPage(1);
               }}
             >
-              <DropdownItem key="5">5</DropdownItem>
               <DropdownItem key="10">10</DropdownItem>
-              <DropdownItem key="15">15</DropdownItem>
+              <DropdownItem key="25">25</DropdownItem>
+              <DropdownItem key="50">50</DropdownItem>
             </DropdownMenu>
           </Dropdown>
         </div>
@@ -387,93 +239,72 @@ export const LeadsTable: React.FC = () => {
           showShadow
           color="primary"
           page={page}
-          total={Math.ceil(leads.length / rowsPerPage)}
+          total={totalPages}
           onChange={setPage}
         />
         <div className="hidden sm:flex w-[30%] justify-end gap-2">
-          <Button
-            isDisabled={page === 1}
-            size="sm"
-            variant="flat"
-            onPress={() => setPage(page - 1)}
-          >
+          <Button isDisabled={page <= 1} size="sm" variant="flat" onPress={() => setPage(page - 1)}>
             Previous
           </Button>
-          <Button
-            isDisabled={page === Math.ceil(leads.length / rowsPerPage)}
-            size="sm"
-            variant="flat"
-            onPress={() => setPage(page + 1)}
-          >
+          <Button isDisabled={page >= totalPages} size="sm" variant="flat" onPress={() => setPage(page + 1)}>
             Next
           </Button>
         </div>
       </div>
     );
-  }, [page, leads.length, rowsPerPage]);
-
-  // Calculate pagination
-  const items = React.useMemo(() => {
-    const start = (page - 1) * rowsPerPage;
-    const end = start + rowsPerPage;
-
-    // Apply sorting
-    const sortedLeads = [...leads].sort((a: any, b: any) => {
-      const first = a[sortDescriptor.column];
-      const second = b[sortDescriptor.column];
-      const cmp = first < second ? -1 : first > second ? 1 : 0;
-      
-      return sortDescriptor.direction === "descending" ? -cmp : cmp;
-    });
-
-    return sortedLeads.slice(start, end);
-  }, [page, leads, rowsPerPage, sortDescriptor]);
+  }, [page, leads, rowsPerPage]);
 
   return (
-    <div className="w-full h-full flex flex-col">
-      <Table
-        aria-label="Leads table"
-        isHeaderSticky
-        selectionMode="multiple"
-        selectedKeys={selectedKeys}
-        onSelectionChange={setSelectedKeys as any}
-        onSortChange={setSortDescriptor as any}
-        sortDescriptor={sortDescriptor as any}
-        topContent={topContent}
-        bottomContent={bottomContent}
-        classNames={{
-          wrapper: "flex-grow min-h-[500px]", // Increased minimum height
-          base: "h-full", // Ensure table takes full height
-          table: "min-w-full", // Ensure table takes full width
-        }}
-        removeWrapper
-      >
-        <TableHeader columns={columns}>
-          {(column) => (
-            <TableColumn
-              key={column.uid}
-              align={column.uid === "actions" ? "center" : "start"}
-              allowsSorting={column.sortable}
-            >
-              {column.name}
-            </TableColumn>
-          )}
-        </TableHeader>
-        <TableBody items={items} emptyContent="No leads found">
-          {(item) => (
-            renderRow(item)
-          )}
-        </TableBody>
-      </Table>
-
+    <>
+      <div className="w-full h-full flex flex-col">
+        <Table
+          aria-label="Leads table with server-side data"
+          isHeaderSticky
+          selectionMode="multiple"
+          selectedKeys={selectedKeys}
+          onSelectionChange={setSelectedKeys as any}
+          onSortChange={setSortDescriptor as any}
+          sortDescriptor={sortDescriptor as any}
+          topContent={topContent}
+          bottomContent={bottomContent}
+          classNames={{
+            wrapper: "flex-grow min-h-[500px]",
+            base: "h-full",
+            table: "min-w-full",
+          }}
+          removeWrapper
+        >
+          <TableHeader columns={columns}>
+            {(column) => (
+              <TableColumn
+                key={column.uid}
+                align={column.uid === "actions" ? "center" : "start"}
+                allowsSorting={column.sortable}
+              >
+                {column.name}
+              </TableColumn>
+            )}
+          </TableHeader>
+          <TableBody 
+            items={items} 
+            isLoading={isLoading}
+            loadingContent={<Spinner label="Loading leads..." />}
+            emptyContent={error ? "Error loading leads." : "No leads found."}
+          >
+            {(item) => (
+              <TableRow key={item.property_id}>
+                {(columnKey) => <TableCell>{renderCell(item, columnKey)}</TableCell>}
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      
       <LeadModal
         isOpen={isOpen}
-        onOpenChange={onOpenChange}
-        lead={currentLead}
-        isNew={isNewLead}
-        onSave={handleSaveLead}
-        onDelete={handleDeleteLead}
+        onClose={onClose}
+        propertyId={selectedPropertyId}
       />
-    </div>
+    </>
   );
 };

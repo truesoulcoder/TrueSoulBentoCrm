@@ -1,8 +1,10 @@
+// src/app/providers.tsx
 'use client';
 
 import { ThemeProvider as NextThemesProvider, useTheme } from 'next-themes';
 import { HeroUIProvider } from '@heroui/system';
 import { useEffect, useState } from 'react';
+import GoogleMapsLoader from '@/components/maps/GoogleMapsLoader';
 
 // Component to handle theme application timing
 function ThemeWrapper({ children }: { children: React.ReactNode }) {
@@ -56,9 +58,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
       disableTransitionOnChange={false}
     >
       <ThemeWrapper>
-        <HeroUIProvider>
-          {children as React.ReactNode}
-        </HeroUIProvider>
+        <GoogleMapsLoader>
+          <HeroUIProvider>
+            {children as React.ReactNode}
+          </HeroUIProvider>
+        </GoogleMapsLoader>
       </ThemeWrapper>
     </NextThemesProvider>
   );
