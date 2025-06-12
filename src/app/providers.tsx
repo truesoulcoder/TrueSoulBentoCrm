@@ -4,7 +4,7 @@
 import { ThemeProvider as NextThemesProvider, useTheme } from 'next-themes';
 import { HeroUIProvider } from '@heroui/system';
 import { useEffect, useState } from 'react';
-import GoogleMapsLoader from '@/components/maps/GoogleMapsLoader';
+import { APIProvider } from '@vis.gl/react-google-maps';
 
 // Component to handle theme application timing
 function ThemeWrapper({ children }: { children: React.ReactNode }) {
@@ -58,11 +58,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
       disableTransitionOnChange={false}
     >
       <ThemeWrapper>
-        <GoogleMapsLoader>
+        <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!}>
           <HeroUIProvider>
             {children as React.ReactNode}
           </HeroUIProvider>
-        </GoogleMapsLoader>
+        </APIProvider>
       </ThemeWrapper>
     </NextThemesProvider>
   );

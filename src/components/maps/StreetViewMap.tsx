@@ -123,17 +123,19 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ address }) => {
     return <StatusDisplay message="Finding location..." icon={<Loader2 className="w-8 h-8 animate-spin" />} />;
   }
 
-  if (status === 'error') { // Removed !position check as geocodeAddress sets it or errors out
+  if (status === 'error') {
     return <StatusDisplay message="Could not find address." icon={<AlertTriangle className="w-8 h-8 text-warning" />} />;
   }
   
-  if (status === 'unavailable') {
+  // If address is unavailable or position couldn't be determined (even if status isn't 'error' yet e.g. initial state)
+  if (status === 'unavailable' || !position) { 
     return <StatusDisplay message="Address not provided or invalid." icon={<AlertTriangle className="w-8 h-8 text-info" />} />;
   }
 
   // This is for the fallback map when Street View is not shown or not available
+  // Position is guaranteed to be non-null here
   const mapOptions: google.maps.MapOptions = {
-    center: position, // position will be non-null here due to checks above
+    center: position!, 
     zoom: 17,
     streetViewControl: false, // We have custom control
     mapTypeControl: false,
@@ -141,6 +143,7 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ address }) => {
     zoomControl: true,
   };
 
+  // At this point, status is 'success' and position is available.
   return (
     <div style={containerStyle}>
       {hasStreetView && (
@@ -148,7 +151,7 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ address }) => {
           isIconOnly
           size="sm"
           variant="flat"
-          className="absolute top-2 right-2 z-20 bg-background/60 backdrop-blur-sm" // Ensure z-index is high enough
+          className="absolute top-2 right-2 z-20 bg-background/60 backdrop-blur-sm"
           onPress={() => setShowStreetView(prev => !prev)}
           aria-label={showStreetView ? "Switch to Map View" : "Switch to Street View"}
         >
@@ -156,30 +159,28 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ address }) => {
         </Button>
       )}
 
-      <div
-        ref={panoramaRef}
-        style={{
-          width: '100%',
-          height: '100%',
-          display: showStreetView && hasStreetView ? 'block' : 'none',
-          borderRadius: '0.5rem',
-        }}
-      />
-
-      {(!showStreetView || !hasStreetView) && position && ( // Show map if not showing street view OR street view not available but position is
-        <div style={{ width: '100%', height: '100%', display: (showStreetView && hasStreetView) ? 'none': 'block', borderRadius: '0.5rem', overflow: 'hidden' }}>
-          <Map
-            {...mapOptions}
-            mapId={process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID}
-            colorScheme={ColorScheme.LIGHT}
-            renderingType={RenderingType.VECTOR}
-          >
-            <AdvancedMarker position={position} />
-          </Map>
-        </div>
+      {showStreetView && hasStreetView ? (
+        <div 
+          ref={panoramaRef} 
+          style={{ width: '100%', height: '100%', borderRadius: '0.5rem' }} 
+        />
+      ) : (
+        // Fallback to 2D map if Street View not available OR user toggled it off OR position is null (safety)
+        position && ( // Position should be valid here, but an extra check doesn't hurt
+          <div style={{ width: '100%', height: '100%', borderRadius: '0.5rem', overflow: 'hidden' }}>
+            <Map
+              {...mapOptions}
+              mapId={process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID}
+              colorScheme={ColorScheme.LIGHT} // TODO: Make this dynamic with theme
+              renderingType={RenderingType.VECTOR}
+            >
+              <AdvancedMarker position={position} />
+            </Map>
+          </div>
+        )
       )}
       
-      {!hasStreetView && status === 'success' && ( // Only show if geocoding was successful but no street view
+      {status === 'success' && !hasStreetView && (
         <div className="absolute bottom-2 left-2 bg-background/70 p-1.5 rounded text-xs text-foreground z-10">
           Street View not available for this location.
         </div>
