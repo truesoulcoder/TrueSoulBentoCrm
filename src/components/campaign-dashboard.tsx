@@ -59,6 +59,12 @@ const CampaignDashboard: FC<CampaignDashboardProps> = () => {
     setIsPaused(false);
   };
 
+  const campaignItems = [
+    { key: 'Summer Promotion', label: 'Summer Promotion' },
+    { key: 'Winter Sale', label: 'Winter Sale' },
+    { key: 'New Product Launch', label: 'New Product Launch' }
+  ] as const;
+
   return (
     <div className="mx-auto max-w-7xl">
       <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -89,14 +95,14 @@ const CampaignDashboard: FC<CampaignDashboardProps> = () => {
             </DropdownTrigger>
             <DropdownMenu 
               aria-label="Campaign selection"
-              items={[
-                { key: 'Summer Promotion', label: 'Summer Promotion' },
-                { key: 'Winter Sale', label: 'Winter Sale' },
-                { key: 'New Product Launch', label: 'New Product Launch' }
-              ]}
+              items={campaignItems}
               onAction={(key: React.Key) => setCurrentCampaign(key.toString())}
             >
-              <Button variant="ghost">Select Campaign</Button>
+              {(item) => (
+                <DropdownItem key={item.key}>
+                  {item.label}
+                </DropdownItem>
+              )}
             </DropdownMenu>
           </Dropdown>
 
