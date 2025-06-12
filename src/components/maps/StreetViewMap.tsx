@@ -2,7 +2,7 @@
 'use client';
 
 import { GoogleMap, StreetViewPanorama } from '@react-google-maps/api';
-import { AlertTriangle, Loader2, MapOff } from 'lucide-react';
+import { AlertTriangle, Loader2, MapPinOff } from 'lucide-react';
 import React, { useState, useEffect, memo } from 'react';
 import { useGoogleMapsApi } from './GoogleMapsLoader';
 
@@ -90,7 +90,7 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = memo(({ address }) =>
   }
 
   if (status === 'unavailable') {
-    return <StatusDisplay message="Street View is not available for this location." icon={<MapOff className="w-8 h-8" />} />;
+    return <StatusDisplay message="Street View is not available for this location." icon={<MapPinOff className="w-8 h-8" />} />;
   }
 
   return (

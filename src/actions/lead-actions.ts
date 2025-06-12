@@ -1,10 +1,14 @@
 // src/actions/lead-actions.ts
 'use server';
 
-import { createAdminServerClient } from '@/lib/supabase/server';
-import { createClient } from '@/lib/supabase/client';
+import { createClient } from '@supabase/supabase-js';
 import type { Tables, TablesInsert, TablesUpdate } from '@/types/supabase';
 import { revalidatePath } from 'next/cache';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 // Define types for convenience
 export type Property = Tables<'properties'>;
@@ -20,12 +24,10 @@ export type LeadDetails = {
  * @returns An object containing the property and an array of contacts.
  */
 export async function getLeadDetails(propertyId: string): Promise<LeadDetails | null> {
-  const supabase = await createAdminServerClient();
-  
   const { data: property, error: propertyError } = await supabase
     .from('properties')
     .select('*')
-    .eq('property_id', propertyId)
+    .eq('id', propertyId)
     .single();
 
   if (propertyError) {
@@ -57,7 +59,6 @@ export async function saveLead(leadData: {
   property: TablesInsert<'properties'> | TablesUpdate<'properties'>;
   contacts: (TablesInsert<'contacts'> | TablesUpdate<'contacts'>)[];
 }): Promise<{ data: Property | null, error: string | null }> {
-  const supabase = await createAdminServerClient();
   const { property, contacts } = leadData;
 
   try {
@@ -79,7 +80,7 @@ export async function saveLead(leadData: {
     } else {
       // --- CREATE ---
       // Get current user to set as owner
-      const { data: { user } } = await createClient(new (require('next/headers').cookies)()).auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated.');
 
       const propertyToInsert: TablesInsert<'properties'> = {
@@ -138,7 +139,6 @@ export async function saveLead(leadData: {
  * @returns An object indicating success or failure.
  */
 export async function deleteLead(propertyId: string): Promise<{ success: boolean; error: string | null }> {
-  const supabase = await createAdminServerClient();
   
   try {
     // Delete associated contacts first to satisfy foreign key constraints

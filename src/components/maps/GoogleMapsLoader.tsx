@@ -27,7 +27,7 @@ interface GoogleMapsLoaderProps {
 }
 
 const GoogleMapsLoader: React.FC<GoogleMapsLoaderProps> = memo(({ children }) => {
-  const apiKey = process.env.NEXT_PUBLIC_Maps_API_KEY;
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-maps-script-main-loader',
@@ -37,7 +37,7 @@ const GoogleMapsLoader: React.FC<GoogleMapsLoaderProps> = memo(({ children }) =>
   });
 
   if (!apiKey) {
-    console.error('Google Maps API key is not set. NEXT_PUBLIC_Maps_API_KEY is missing from environment variables.');
+    console.error('Google Maps API key is not set. NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is missing from environment variables.');
     return (
         <div style={{ padding: '20px', textAlign: 'center', color: 'red', backgroundColor: '#fffbe6', border: '1px solid #fccf4f', borderRadius: '8px' }}>
             <strong>Configuration Error:</strong> Google Maps API key is not configured. Mapping features will be unavailable.
