@@ -18,14 +18,13 @@ import {
   Chip,
   Spinner,
   useDisclosure,
+  Input,
 } from "@heroui/react";
 import { Database } from "@/types/supabase";
 import { LeadModal } from "./lead-modal";
 
-// Define the Lead type based on the properties_with_contacts view
 type LeadData = Database['public']['Views']['properties_with_contacts']['Row'];
 
-// API fetcher for SWR
 const fetcher = (url: string) => fetch(url).then(res => {
   if (!res.ok) {
     throw new Error('An error occurred while fetching the data.');
@@ -33,7 +32,6 @@ const fetcher = (url: string) => fetch(url).then(res => {
   return res.json();
 });
 
-// Helper to format currency
 const formatCurrency = (value: number | null | undefined) => {
   if (value === null || value === undefined) return "N/A";
   return new Intl.NumberFormat('en-US', {
@@ -49,19 +47,14 @@ const columns = [
   { name: "STATUS", uid: "status", sortable: true },
   { name: "CONTACTS", uid: "contact_names", sortable: true },
   { name: "ADDRESS", uid: "property_address", sortable: true },
-  { name: "MARKET REGION", uid: "market_region", sortable: true },
+  { name: "REGION", uid: "market_region", sortable: true },
   { name: "MARKET VALUE", uid: "market_value", sortable: true },
-  { name: "ASSESSED TOTAL", uid: "assessed_total", sortable: true },
-  { name: "YEAR BUILT", uid: "year_built", sortable: true },
-  { name: "BEDS", uid: "beds", sortable: true },
-  { name: "BATHS", uid: "baths", sortable: true },
-  { name: "SQFT", uid: "square_footage", sortable: true },
-  { name: "MLS LIST PRICE", uid: "mls_list_price", sortable: true },
-  { name: "DAYS ON MARKET", uid: "mls_days_on_market", sortable: true },
-  { name: "ACTIONS", uid: "actions", sortable: false },
+  { name: "TYPE", uid: "property_type", sortable: true },
+  { name: "LIST PRICE", uid: "mls_list_price", sortable: true },
+  { name: "DOM", uid: "mls_days_on_market", sortable: true },
+  { name: "EDIT", uid: "actions", sortable: false },
 ];
 
-// Status color mapping
 const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "warning" | "danger" | "default" } = {
   "New Lead": "primary",
   "Attempted to Contact": "secondary",
@@ -82,6 +75,7 @@ export const LeadsTable: React.FC = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [selectedPropertyId, setSelectedPropertyId] = React.useState<string | null>(null);
 
+  const [filterValue, setFilterValue] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
   
@@ -91,6 +85,65 @@ export const LeadsTable: React.FC = () => {
   });
   
   const [selectedKeys, setSelectedKeys] = React.useState(new Set<string>());
+
+  const hasSearchFilter = Boolean(filterValue);
+
+  const filteredItems = React.useMemo(() => {
+    let filteredLeads = [...(leads || [])];
+
+    if (hasSearchFilter) {
+      filteredLeads = filteredLeads.filter((lead) => {
+        const search = filterValue.toLowerCase();
+        const searchFields = [
+          lead.contact_names,
+          lead.contact_emails,
+          lead.property_address,
+          lead.property_city,
+          lead.property_state,
+          lead.property_postal_code,
+          lead.market_region,
+          lead.status,
+        ];
+        return searchFields.some(field => 
+          String(field).toLowerCase().includes(search)
+        );
+      });
+    }
+    return filteredLeads;
+  }, [leads, filterValue]);
+
+  const items = React.useMemo(() => {
+    const start = (page - 1) * rowsPerPage;
+    const end = start + rowsPerPage;
+
+    const sortedLeads = [...filteredItems].sort((a, b) => {
+      const first = a[sortDescriptor.column as keyof LeadData];
+      const second = b[sortDescriptor.column as keyof LeadData];
+
+      if (first == null && second == null) return 0;
+      if (first == null) return 1;
+      if (second == null) return -1;
+      
+      const cmp = String(first).localeCompare(String(second), undefined, { numeric: true });
+      return sortDescriptor.direction === "descending" ? -cmp : cmp;
+    });
+
+    return sortedLeads.slice(start, end);
+  }, [page, filteredItems, rowsPerPage, sortDescriptor]);
+
+  const onSearchChange = React.useCallback((value?: string) => {
+    if (value) {
+      setFilterValue(value);
+      setPage(1);
+    } else {
+      setFilterValue("");
+    }
+  }, []);
+
+  const onClear = React.useCallback(()=>{
+    setFilterValue("")
+    setPage(1)
+  },[])
 
   const handleAddLead = React.useCallback(() => {
     setSelectedPropertyId(null);
@@ -103,7 +156,7 @@ export const LeadsTable: React.FC = () => {
   }, [onOpen]);
   
   const handleCloseModal = () => {
-    mutate(); // Re-fetch data when modal is closed
+    mutate();
     onClose();
   }
 
@@ -111,21 +164,12 @@ export const LeadsTable: React.FC = () => {
     switch (columnKey) {
       case "status":
         const statusKey = lead.status as keyof typeof statusColorMap;
-        return (
-          <Chip
-            className="capitalize"
-            color={statusColorMap[statusKey] || "default"}
-            size="sm"
-            variant="flat"
-          >
-            {lead.status || "N/A"}
-          </Chip>
-        );
+        return <Chip className="capitalize" color={statusColorMap[statusKey] || "default"} size="sm" variant="flat">{lead.status || "N/A"}</Chip>;
       case "contact_names":
-        const names = lead.contact_names?.split('|') || [];
-        const phones = lead.contact_phones?.split('|') || [];
-        const emails = lead.contact_emails?.split('|') || [];
-        if (names.every(name => !name)) return "No Contacts";
+        const names = lead.contact_names?.split(',').map(n => n.trim()) || [];
+        const phones = lead.contact_phones?.split(',').map(p => p.trim()) || [];
+        const emails = lead.contact_emails?.split(',').map(e => e.trim()) || [];
+        if (names.length === 0 || names.every(name => !name)) return "No Contacts";
         return (
           <div className="text-xs space-y-2">
             {names.map((name, index) => (
@@ -170,45 +214,33 @@ export const LeadsTable: React.FC = () => {
         return value === null || value === undefined ? "N/A" : String(value);
     }
   }, [handleEditLead]);
-
-  const items = React.useMemo(() => {
-    if (!leads) return [];
-    
-    const start = (page - 1) * rowsPerPage;
-    const end = start + rowsPerPage;
-
-    const sortedLeads = [...leads].sort((a, b) => {
-      const first = a[sortDescriptor.column as keyof LeadData];
-      const second = b[sortDescriptor.column as keyof LeadData];
-
-      if (first == null && second == null) return 0;
-      if (first == null) return 1;
-      if (second == null) return -1;
-      
-      const cmp = String(first).localeCompare(String(second), undefined, { numeric: true });
-      return sortDescriptor.direction === "descending" ? -cmp : cmp;
-    });
-
-    return sortedLeads.slice(start, end);
-  }, [page, leads, rowsPerPage, sortDescriptor]);
-
+  
   const topContent = React.useMemo(() => {
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex justify-between items-center">
-          <Button color="primary" startContent={<Icon icon="lucide:plus" />} onPress={handleAddLead}>
+        <div className="flex justify-between gap-3 items-end">
+          <Input
+            isClearable
+            className="w-full sm:max-w-[44%]"
+            placeholder="Search leads..."
+            startContent={<Icon icon="lucide:search" />}
+            value={filterValue}
+            onClear={onClear}
+            onValueChange={onSearchChange}
+          />
+          <div className="flex gap-3">
+            <Button color="primary" startContent={<Icon icon="lucide:plus" />} onPress={handleAddLead}>
               Add Lead
-          </Button>
-          <span className="text-default-500 text-small">
-            Total {leads ? leads.length : 0} leads
-          </span>
+            </Button>
+          </div>
         </div>
+        <span className="text-default-400 text-small">Total {filteredItems.length} leads</span>
       </div>
     );
-  }, [leads, handleAddLead]);
+  }, [leads, filterValue, onSearchChange, onClear, handleAddLead, filteredItems.length]);
 
   const bottomContent = React.useMemo(() => {
-    const totalPages = leads ? Math.ceil(leads.length / rowsPerPage) : 0;
+    const totalPages = filteredItems ? Math.ceil(filteredItems.length / rowsPerPage) : 0;
     return (
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 py-2">
         <div className="flex items-center gap-2">
@@ -243,7 +275,7 @@ export const LeadsTable: React.FC = () => {
           showShadow
           color="primary"
           page={page}
-          total={totalPages}
+          total={totalPages > 0 ? totalPages : 1}
           onChange={setPage}
         />
         <div className="hidden sm:flex w-[30%] justify-end gap-2">
@@ -256,13 +288,13 @@ export const LeadsTable: React.FC = () => {
         </div>
       </div>
     );
-  }, [page, leads, rowsPerPage]);
+  }, [page, filteredItems.length, rowsPerPage]);
 
   return (
     <>
       <div className="w-full h-full flex flex-col">
         <Table
-          aria-label="Leads table with server-side data"
+          aria-label="Leads table with client-side filtering"
           isHeaderSticky
           selectionMode="multiple"
           selectedKeys={selectedKeys}
@@ -271,35 +303,19 @@ export const LeadsTable: React.FC = () => {
           sortDescriptor={sortDescriptor as any}
           topContent={topContent}
           bottomContent={bottomContent}
-          classNames={{
-            wrapper: "flex-grow min-h-[500px]",
-            base: "h-full",
-            table: "min-w-full",
-          }}
+          classNames={{ wrapper: "flex-grow min-h-[500px]", base: "h-full", table: "min-w-full" }}
           removeWrapper
         >
           <TableHeader columns={columns}>
-            {(column) => (
-              <TableColumn
-                key={column.uid}
-                align={column.uid === "actions" ? "center" : "start"}
-                allowsSorting={column.sortable}
-              >
-                {column.name}
-              </TableColumn>
-            )}
+            {(column) => (<TableColumn key={column.uid} align={column.uid === "actions" ? "center" : "start"} allowsSorting={column.sortable}>{column.name}</TableColumn>)}
           </TableHeader>
           <TableBody 
             items={items} 
             isLoading={isLoading}
             loadingContent={<Spinner label="Loading leads..." />}
-            emptyContent={error ? "Error loading leads." : "No leads found."}
+            emptyContent={hasSearchFilter ? "No leads found." : "No leads to display."}
           >
-            {(item) => (
-              <TableRow key={item.property_id}>
-                {(columnKey) => <TableCell>{renderCell(item, columnKey)}</TableCell>}
-              </TableRow>
-            )}
+            {(item) => (<TableRow key={item.property_id}>{(columnKey) => <TableCell>{renderCell(item, columnKey)}</TableCell>}</TableRow>)}
           </TableBody>
         </Table>
       </div>

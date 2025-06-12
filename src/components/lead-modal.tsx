@@ -69,29 +69,29 @@ export const LeadModal: React.FC<LeadModalProps> = ({ propertyId, isOpen, onClos
         setProperty(data.property);
         setContacts(data.contacts.length > 0 ? data.contacts : [{...newContactTemplate}]);
       } else {
-        throw new Error('Failed to load lead data.');
+        setError('Failed to load lead data. Please close and try again.');
       }
     } catch (err: any) {
-      setError(err.message);
-      onClose();
+      setError(err.message || 'An unknown error occurred.');
     } finally {
       setIsLoading(false);
     }
-  }, [onClose]);
+  }, []);
 
   useEffect(() => {
-    if (isOpen && propertyId) {
-      loadLeadData(propertyId);
-    } else if (isOpen && !propertyId) {
-      setProperty(newPropertyTemplate);
-      setContacts([{...newContactTemplate, contact_id: `new_${Date.now()}`}]);
-      setError(null);
-      setIsLoading(false);
+    if (isOpen) {
+        setError(null);
+        if (propertyId) {
+            loadLeadData(propertyId);
+        } else {
+            setProperty(newPropertyTemplate);
+            setContacts([{...newContactTemplate, contact_id: `new_${Date.now()}`}]);
+            setIsLoading(false);
+        }
     }
   }, [isOpen, propertyId, loadLeadData]);
 
-  const handlePropertyChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
+  const handlePropertyChange = (name: string, value: string) => {
     const numericFields = ['market_value', 'assessed_total', 'year_built', 'beds', 'baths', 'square_footage', 'lot_size_sqft', 'mls_list_price', 'mls_days_on_market'];
     if (numericFields.includes(name)) {
         setProperty(prev => ({ ...prev, [name]: value === '' ? null : Number(value) }));
@@ -101,11 +101,10 @@ export const LeadModal: React.FC<LeadModalProps> = ({ propertyId, isOpen, onClos
   };
 
   const handleSelectChange = (name: keyof Property, value: string) => {
-    setProperty(prev => ({ ...prev, [name]: value }));
+    setProperty(prev => ({ ...prev, [name]: value as any }));
   };
   
-  const handleContactChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
+  const handleContactChange = (index: number, name: string, value: string) => {
     const newContacts = [...contacts];
     newContacts[index] = { ...newContacts[index], [name]: value };
     setContacts(newContacts);
@@ -155,7 +154,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ propertyId, isOpen, onClos
   };
 
   const fullAddress = [property.property_address, property.property_city, property.property_state, property.property_postal_code].filter(Boolean).join(', ');
-  const modalHeader = propertyId ? fullAddress : 'Create New Lead';
+  const modalHeader = propertyId && fullAddress ? fullAddress : 'Create New Lead';
   const canDisplayMap = !!property.property_address && !!property.property_city && !!property.property_state;
 
   return (
@@ -170,6 +169,10 @@ export const LeadModal: React.FC<LeadModalProps> = ({ propertyId, isOpen, onClos
         <ModalBody className="p-0">
           {isLoading ? (
             <div className="flex justify-center items-center h-96"><Spinner label="Loading Lead..." /></div>
+          ) : error ? (
+            <div className="flex justify-center items-center h-96 p-8 text-center text-danger">
+              <p>{error}</p>
+            </div>
           ) : (
             <>
               <div className="h-64 bg-content2">
@@ -178,24 +181,24 @@ export const LeadModal: React.FC<LeadModalProps> = ({ propertyId, isOpen, onClos
               <div className="p-6 space-y-6">
                 <h3 className="text-lg font-semibold text-foreground">Property Details</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-                  <Input name="property_address" placeholder="Property Address" value={property.property_address || ''} onValueChange={(v) => handlePropertyChange({target: {name: 'property_address', value: v}} as any)} className="col-span-2 w-full" style={{minWidth: '30rem'}} />
-                  <Input name="property_city" placeholder="City" value={property.property_city || ''} onValueChange={(v) => handlePropertyChange({target: {name: 'property_city', value: v}} as any)} className="w-full" style={{minWidth: '15rem'}} />
-                  <Input name="property_state" placeholder="State" value={property.property_state || ''} onValueChange={(v) => handlePropertyChange({target: {name: 'property_state', value: v}} as any)} maxLength={2} className="w-full" style={{minWidth: '5rem'}}/>
-                  <Input name="property_postal_code" placeholder="Postal Code" value={property.property_postal_code || ''} onValueChange={(v) => handlePropertyChange({target: {name: 'property_postal_code', value: v}} as any)} maxLength={10} className="w-full" style={{minWidth: '8rem'}} />
-                  <Select aria-label="Lead Status" placeholder="Lead Status" selectedKeys={property.status ? [property.status] : []} onSelectionChange={(keys) => handleSelectChange('status', Array.from(keys)[0] as string)} className="col-span-2">
+                  <Input label="Property Address" name="property_address" value={property.property_address || ''} onValueChange={(v) => handlePropertyChange('property_address', v)} className="col-span-2" />
+                  <Input label="City" name="property_city" value={property.property_city || ''} onValueChange={(v) => handlePropertyChange('property_city', v)} />
+                  <Input label="State" name="property_state" value={property.property_state || ''} onValueChange={(v) => handlePropertyChange('property_state', v)} maxLength={2} />
+                  <Input label="Postal Code" name="property_postal_code" value={property.property_postal_code || ''} onValueChange={(v) => handlePropertyChange('property_postal_code', v)} maxLength={10} />
+                  <Select label="Lead Status" selectedKeys={property.status ? [property.status] : []} onSelectionChange={(keys) => handleSelectChange('status', Array.from(keys)[0] as string)} className="col-span-2">
                     {LEAD_STATUS_OPTIONS.map(s => <SelectItem key={s}>{s}</SelectItem>)}
                   </Select>
-                  <Input name="market_region" placeholder="Market Region" value={property.market_region || ''} onValueChange={(v) => handlePropertyChange({target: {name: 'market_region', value: v}} as any)} className="w-full" style={{minWidth: '12rem'}}/>
-                  <Input name="property_type" placeholder="Property Type" value={property.property_type || ''} onValueChange={(v) => handlePropertyChange({target: {name: 'property_type', value: v}} as any)} className="w-full" style={{minWidth: '10rem'}} />
-                  <Input name="market_value" placeholder="Market Value" type="number" startContent="$" value={String(property.market_value ?? '')} onChange={handlePropertyChange} className="w-full" style={{minWidth: '10rem'}}/>
-                  <Input name="assessed_total" placeholder="Assessed Total" type="number" startContent="$" value={String(property.assessed_total ?? '')} onChange={handlePropertyChange} className="w-full" style={{minWidth: '10rem'}}/>
-                  <Input name="mls_list_price" placeholder="MLS List Price" type="number" startContent="$" value={String(property.mls_list_price ?? '')} onChange={handlePropertyChange} className="w-full" style={{minWidth: '10rem'}}/>
-                  <Input name="mls_days_on_market" placeholder="Days on Market" type="number" value={String(property.mls_days_on_market ?? '')} onChange={handlePropertyChange} className="w-full" style={{minWidth: '8rem'}}/>
-                  <Input name="year_built" placeholder="Year Built" type="number" value={String(property.year_built ?? '')} onChange={handlePropertyChange} className="w-full" style={{minWidth: '6rem'}}/>
-                  <Input name="beds" placeholder="Beds" type="number" value={String(property.beds ?? '')} onChange={handlePropertyChange} className="w-full" style={{minWidth: '5rem'}}/>
-                  <Input name="baths" placeholder="Baths" type="number" step="0.1" value={String(property.baths ?? '')} onChange={handlePropertyChange} className="w-full" style={{minWidth: '5rem'}}/>
-                  <Input name="square_footage" placeholder="Square Footage" type="number" value={String(property.square_footage ?? '')} onChange={handlePropertyChange} className="w-full" style={{minWidth: '8rem'}}/>
-                  <Input name="lot_size_sqft" placeholder="Lot Size (sqft)" type="number" value={String(property.lot_size_sqft ?? '')} onChange={handlePropertyChange} className="w-full" style={{minWidth: '8rem'}}/>
+                  <Input label="Market Region" name="market_region" value={property.market_region || ''} onValueChange={(v) => handlePropertyChange('market_region', v)} />
+                  <Input label="Property Type" name="property_type" value={property.property_type || ''} onValueChange={(v) => handlePropertyChange('property_type', v)} />
+                  <Input label="Market Value" name="market_value" type="number" startContent="$" value={String(property.market_value ?? '')} onValueChange={(v) => handlePropertyChange('market_value', v)} />
+                  <Input label="Assessed Total" name="assessed_total" type="number" startContent="$" value={String(property.assessed_total ?? '')} onValueChange={(v) => handlePropertyChange('assessed_total', v)} />
+                  <Input label="MLS List Price" name="mls_list_price" type="number" startContent="$" value={String(property.mls_list_price ?? '')} onValueChange={(v) => handlePropertyChange('mls_list_price', v)} />
+                  <Input label="Days on Market" name="mls_days_on_market" type="number" value={String(property.mls_days_on_market ?? '')} onValueChange={(v) => handlePropertyChange('mls_days_on_market', v)} />
+                  <Input label="Year Built" name="year_built" type="number" value={String(property.year_built ?? '')} onValueChange={(v) => handlePropertyChange('year_built', v)} />
+                  <Input label="Beds" name="beds" type="number" value={String(property.beds ?? '')} onValueChange={(v) => handlePropertyChange('beds', v)} />
+                  <Input label="Baths" name="baths" type="number" step="0.1" value={String(property.baths ?? '')} onValueChange={(v) => handlePropertyChange('baths', v)} />
+                  <Input label="Square Footage" name="square_footage" type="number" value={String(property.square_footage ?? '')} onValueChange={(v) => handlePropertyChange('square_footage', v)} />
+                  <Input label="Lot Size (sqft)" name="lot_size_sqft" type="number" value={String(property.lot_size_sqft ?? '')} onValueChange={(v) => handlePropertyChange('lot_size_sqft', v)} />
                 </div>
                 <Divider />
                 <div className="flex justify-between items-center">
@@ -205,31 +208,32 @@ export const LeadModal: React.FC<LeadModalProps> = ({ propertyId, isOpen, onClos
                 <div className="space-y-4">
                     {contacts.map((contact, index) => (
                         <div key={contact.contact_id || `new-${index}`} className="p-4 border border-divider rounded-md space-y-3 relative">
-                             <Button isIconOnly size="sm" color="danger" variant="light" className="absolute top-2 right-2" onPress={() => removeContact(index)}><Icon icon="lucide:x" /></Button>
+                           <Button isIconOnly size="sm" color="danger" variant="light" className="absolute top-2 right-2" onPress={() => removeContact(index)}><Icon icon="lucide:x" /></Button>
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Input name="name" placeholder="Contact Name" value={contact.name || ''} onChange={(e) => handleContactChange(index, e)} className="col-span-2 md:col-span-1" />
-                            <Select aria-label={`Role for contact ${index + 1}`} placeholder="Role" selectedKeys={contact.role ? [contact.role] : []} onChange={(e) => handleContactSelectChange(index, 'role', e.target.value)} className="w-full">
+                            <Input label="Contact Name" name="name" value={contact.name || ''} onValueChange={(v) => handleContactChange(index, 'name', v)} className="col-span-2 md:col-span-1" />
+                            <Select label="Role" selectedKeys={contact.role ? [contact.role] : []} onSelectionChange={(keys) => handleContactSelectChange(index, 'role', Array.from(keys)[0] as string)}>
                                 {CONTACT_ROLE_OPTIONS.map(r => <SelectItem key={r}>{r.charAt(0).toUpperCase() + r.slice(1).replace('_', ' ')}</SelectItem>)}
                             </Select>
-                            <Input name="phone" placeholder="Phone Number" value={contact.phone || ''} onChange={(e) => handleContactChange(index, e)} className="w-full" />
-                            <Input name="email" placeholder="Email Address" type="email" value={contact.email || ''} onChange={(e) => handleContactChange(index, e)} className="w-full" />
+                            <Input label="Phone Number" name="phone" value={contact.phone || ''} onValueChange={(v) => handleContactChange(index, 'phone', v)} />
+                            <Input label="Email Address" name="email" type="email" value={contact.email || ''} onValueChange={(v) => handleContactChange(index, 'email', v)} className="col-span-2" />
                            </div>
                         </div>
                     ))}
                 </div>
                 <Divider />
                 <h3 className="text-lg font-semibold text-foreground">Notes</h3>
-                <Textarea name="notes" placeholder="Enter notes here..." value={property.notes || ''} onValueChange={(v) => handlePropertyChange({target: {name: 'notes', value: v}} as any)} minRows={10} className="w-full" />
+                <Textarea label="Notes" name="notes" value={property.notes || ''} onValueChange={(v) => handlePropertyChange('notes', v)} minRows={10} />
               </div>
             </>
           )}
         </ModalBody>
         <ModalFooter className="border-t border-divider">
-            {error && <p className="text-sm text-danger mr-auto">{error}</p>}
+            {isSaving && <Spinner size="sm" className="mr-auto" />}
+            {error && !isSaving && <p className="text-sm text-danger mr-auto">{error}</p>}
             {!propertyId ? null : ( <Button color="danger" variant="light" onPress={handleDelete} isLoading={isDeleting} disabled={isDeleting || isSaving}>Delete Lead</Button>)}
             <div className='flex-grow' />
-            <Button variant="flat" onPress={onClose} disabled={isSaving || isDeleting}>Cancel</Button>
-            <Button color="primary" onPress={handleSave} isLoading={isSaving} disabled={isSaving || isDeleting}>{propertyId ? 'Save Changes' : 'Create Lead'}</Button>
+            <Button variant="flat" onPress={onClose} disabled={isSaving || isSaving}>Cancel</Button>
+            <Button color="primary" onPress={handleSave} isLoading={isSaving} disabled={isDeleting || isSaving}>{propertyId ? 'Save Changes' : 'Create Lead'}</Button>
         </ModalFooter>
       </ModalContent>
     </Modal>

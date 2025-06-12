@@ -1,10 +1,12 @@
 // src/components/maps/StreetViewMap.tsx
 'use client';
 
-import { GoogleMap, StreetViewPanorama } from '@react-google-maps/api';
-import { AlertTriangle, Loader2, MapPinOff } from 'lucide-react';
-import React, { useState, useEffect, memo } from 'react';
+import { GoogleMap, StreetViewPanorama, Marker } from '@react-google-maps/api';
+import { AlertTriangle, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useGoogleMapsApi } from './GoogleMapsLoader';
+import { Button } from '@heroui/react';
+import { Icon } from '@iconify/react';
 
 interface StreetViewMapProps {
   address: string;
@@ -16,8 +18,7 @@ const containerStyle: React.CSSProperties = {
   borderRadius: '0.5rem',
   position: 'relative',
   overflow: 'hidden',
-  backgroundColor: '#e5e7eb', // A default background color
-  minHeight: '200px', // Ensure it has a minimum height
+  backgroundColor: '#e5e7eb',
 };
 
 const StatusDisplay: React.FC<{ message: string; icon: React.ReactNode }> = ({ message, icon }) => (
@@ -27,30 +28,33 @@ const StatusDisplay: React.FC<{ message: string; icon: React.ReactNode }> = ({ m
   </div>
 );
 
-const StreetViewMapContent: React.FC<StreetViewMapProps> = memo(({ address }) => {
+const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ address }) => {
   const [position, setPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [status, setStatus] = useState<'loading' | 'error' | 'unavailable' | 'success'>('loading');
+  const [hasStreetView, setHasStreetView] = useState(false);
+  const [showStreetView, setShowStreetView] = useState(true);
 
-  useEffect(() => {
-    if (!address) {
+  const geocodeAddress = useCallback((geocoder: google.maps.Geocoder, streetViewService: google.maps.StreetViewService) => {
+    if (!address || !address.trim()) {
       setStatus('unavailable');
       return;
     }
 
-    const geocoder = new window.google.maps.Geocoder();
     geocoder.geocode({ address }, (results, geocoderStatus) => {
       if (geocoderStatus === 'OK' && results && results[0]) {
         const location = results[0].geometry.location;
         const latLng = { lat: location.lat(), lng: location.lng() };
+        setPosition(latLng);
 
-        const streetViewService = new window.google.maps.StreetViewService();
         streetViewService.getPanorama({ location: latLng, radius: 50 }, (data, streetViewStatus) => {
           if (streetViewStatus === 'OK') {
-            setPosition(latLng);
+            setHasStreetView(true);
+            setShowStreetView(true);
             setStatus('success');
           } else {
-            setStatus('unavailable');
-            console.warn(`Street View not available for "${address}": ${streetViewStatus}`);
+            setHasStreetView(false);
+            setShowStreetView(false);
+            setStatus('success');
           }
         });
       } else {
@@ -60,7 +64,35 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = memo(({ address }) =>
     });
   }, [address]);
 
-  const panoramaOptions: google.maps.StreetViewPanoramaOptions = {
+  useEffect(() => {
+    if (window.google?.maps) {
+      const geocoder = new window.google.maps.Geocoder();
+      const streetViewService = new window.google.maps.StreetViewService();
+      // Debounce the call slightly to avoid rapid-firing API requests
+      const handler = setTimeout(() => geocodeAddress(geocoder, streetViewService), 500);
+      return () => clearTimeout(handler);
+    }
+  }, [address, geocodeAddress]);
+
+  if (status === 'loading') {
+    return <StatusDisplay message="Finding location..." icon={<Loader2 className="w-8 h-8 animate-spin" />} />;
+  }
+
+  if (status === 'error' || !position) {
+    return <StatusDisplay message="Could not find address." icon={<AlertTriangle className="w-8 h-8 text-warning" />} />;
+  }
+  
+  const mapOptions: google.maps.MapOptions = {
+    center: position,
+    zoom: 17,
+    streetViewControl: false,
+    mapTypeControl: false,
+    fullscreenControl: false,
+    zoomControl: true,
+    mapId: process.env.NEXT_PUBLIC_Maps_MAP_ID, // Use the Map ID from environment variables
+  };
+  
+  const panoramaOptions = {
     position,
     pov: { heading: 165, pitch: 0 },
     zoom: 1,
@@ -70,44 +102,35 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = memo(({ address }) =>
     fullscreenControl: false,
   };
 
-  const mapOptions: google.maps.MapOptions = {
-    center: position || { lat: 0, lng: 0 },
-    zoom: 15,
-    mapTypeId: 'roadmap',
-    streetViewControl: false,
-    mapTypeControl: false,
-    fullscreenControl: false,
-    zoomControl: true,
-    clickableIcons: false,
-  };
-
-  if (status === 'loading') {
-    return <StatusDisplay message="Loading Street View..." icon={<Loader2 className="w-8 h-8 animate-spin" />} />;
-  }
-
-  if (status === 'error') {
-    return <StatusDisplay message="Could not find address." icon={<AlertTriangle className="w-8 h-8 text-warning" />} />;
-  }
-
-  if (status === 'unavailable') {
-    return <StatusDisplay message="Street View is not available for this location." icon={<MapPinOff className="w-8 h-8" />} />;
-  }
-
   return (
     <div style={containerStyle}>
-      <GoogleMap
-        mapContainerStyle={{ width: '100%', height: '100%' }}
-        center={position || undefined}
-        zoom={18}
-        options={mapOptions}
-      >
-        <StreetViewPanorama options={panoramaOptions} />
+      <GoogleMap mapContainerStyle={{ width: '100%', height: '100%' }} options={mapOptions}>
+        {hasStreetView && (
+          <Button
+            isIconOnly
+            size="sm"
+            variant="flat"
+            className="absolute top-2 right-2 z-10 bg-background/60 backdrop-blur-sm"
+            onPress={() => setShowStreetView(prev => !prev)}
+            aria-label={showStreetView ? "Switch to Map View" : "Switch to Street View"}
+          >
+            {showStreetView ? <Icon icon="lucide:map" /> : <Icon icon="lucide:eye" />}
+          </Button>
+        )}
+        {showStreetView && hasStreetView ? (
+          <StreetViewPanorama options={panoramaOptions} />
+        ) : (
+          <Marker position={position} />
+        )}
+        {!hasStreetView && (
+          <div className="absolute bottom-2 left-2 bg-background/70 p-1.5 rounded text-xs text-foreground">
+            Street View not available for this location.
+          </div>
+        )}
       </GoogleMap>
     </div>
   );
-});
-
-StreetViewMapContent.displayName = 'StreetViewMapContent';
+};
 
 const StreetViewMap: React.FC<StreetViewMapProps> = (props) => {
   const { isLoaded, loadError } = useGoogleMapsApi();
@@ -119,10 +142,8 @@ const StreetViewMap: React.FC<StreetViewMapProps> = (props) => {
   if (!isLoaded) {
     return <StatusDisplay message="Initializing map..." icon={<Loader2 className="w-8 h-8 animate-spin" />} />;
   }
-
+  
   return <StreetViewMapContent {...props} />;
 };
-
-StreetViewMap.displayName = 'StreetViewMap';
 
 export default StreetViewMap;

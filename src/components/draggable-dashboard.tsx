@@ -1,6 +1,6 @@
 import React from "react";
 import { Icon } from "@iconify/react";
-import { Card, CardHeader, CardBody, Button, Tooltip } from "@heroui/react";
+import { Card, CardHeader, CardBody, Button } from "@heroui/react";
 import { Responsive, WidthProvider } from "react-grid-layout";
 import { CampaignChart } from "./campaign-chart";
 import { CampaignConsole } from "./campaign-console";
@@ -9,6 +9,7 @@ import { EmailSelector } from "./email-selector";
 import { TemplatePreview } from "./template-preview";
 import { CampaignSettings } from "./campaign-settings";
 import { LeadsTable } from "./leads-table";
+import { LeadsUpload } from "./leads-upload"; // Import the new component
 
 // Fix CSS imports for react-grid-layout
 import "react-grid-layout/css/styles.css";
@@ -40,7 +41,6 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
   currentCampaign,
   isEditMode,
 }) => {
-  // Define dashboard items
   const dashboardItems: DashboardItem[] = [
     {
       i: "status",
@@ -75,6 +75,14 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       minSize: { w: 1, h: 2 },
     },
     {
+      i: "leads-upload", // Add the new uploader component
+      title: "Leads Uploader",
+      subtitle: "Upload new leads via CSV",
+      component: <LeadsUpload />,
+      defaultSize: { w: 2, h: 2 },
+      minSize: { w: 2, h: 2 },
+    },
+    {
       i: "template",
       title: "Template Preview",
       subtitle: "Current email template",
@@ -87,7 +95,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       title: "Campaign Settings",
       subtitle: "Configure campaign parameters",
       component: <CampaignSettings currentCampaign={currentCampaign} />,
-      defaultSize: { w: 4, h: 2 },
+      defaultSize: { w: 2, h: 2 },
       minSize: { w: 2, h: 2 },
     },
     {
@@ -95,12 +103,11 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       title: "Campaign Leads",
       subtitle: "Manage your campaign leads",
       component: <LeadsTable />,
-      defaultSize: { w: 4, h: 4 }, // Full width (4 columns)
-      minSize: { w: 4, h: 3 }, // Force minimum width to be full width (4 columns)
+      defaultSize: { w: 4, h: 4 }, 
+      minSize: { w: 4, h: 3 },
     },
   ];
 
-  // Load layouts from localStorage or use defaults
   const getFromLS = (key: string): any => {
     let ls: Record<string, any> = {};
     if (typeof window !== "undefined") {
@@ -113,7 +120,6 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
     return ls[key] || null;
   };
 
-  // Save layouts to localStorage
   const saveToLS = (key: string, value: any) => {
     if (typeof window !== "undefined") {
       try {
@@ -126,71 +132,44 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
     }
   };
 
-  // Update the default layouts to make leads full width in all breakpoints
   const defaultLayouts: Layouts = {
     lg: [
       { i: "status", x: 0, y: 0, w: 1, h: 2 },
       { i: "chart", x: 1, y: 0, w: 2, h: 2 },
       { i: "emails", x: 3, y: 0, w: 1, h: 2 },
-      { i: "console", x: 0, y: 2, w: 2, h: 2 },
-      { i: "template", x: 2, y: 2, w: 2, h: 2 },
-      { i: "settings", x: 0, y: 4, w: 4, h: 2 },
-      { i: "leads", x: 0, y: 6, w: 4, h: 4 }, // Full width (4 columns)
+      { i: "console", x: 0, y: 2, w: 1, h: 2 },
+      { i: "leads-upload", x: 1, y: 2, w: 1, h: 2 },
+      { i: "template", x: 2, y: 2, w: 1, h: 2 },
+      { i: "settings", x: 3, y: 2, w: 1, h: 2 },
+      { i: "leads", x: 0, y: 4, w: 4, h: 4 },
     ],
     md: [
       { i: "status", x: 0, y: 0, w: 1, h: 2 },
       { i: "chart", x: 1, y: 0, w: 2, h: 2 },
       { i: "emails", x: 0, y: 2, w: 1, h: 2 },
       { i: "console", x: 1, y: 2, w: 2, h: 2 },
-      { i: "template", x: 0, y: 4, w: 3, h: 2 },
-      { i: "settings", x: 0, y: 6, w: 3, h: 2 },
-      { i: "leads", x: 0, y: 8, w: 3, h: 4 }, // Full width for md (3 columns)
+      { i: "leads-upload", x: 0, y: 4, w: 1, h: 2 },
+      { i: "template", x: 1, y: 4, w: 1, h: 2 },
+      { i: "settings", x: 2, y: 4, w: 1, h: 2 },
+      { i: "leads", x: 0, y: 6, w: 4, h: 4 },
     ],
     sm: [
       { i: "status", x: 0, y: 0, w: 1, h: 2 },
       { i: "chart", x: 0, y: 2, w: 1, h: 2 },
       { i: "emails", x: 0, y: 4, w: 1, h: 2 },
       { i: "console", x: 0, y: 6, w: 1, h: 2 },
-      { i: "template", x: 0, y: 8, w: 1, h: 2 },
-      { i: "settings", x: 0, y: 10, w: 1, h: 2 },
-      { i: "leads", x: 0, y: 12, w: 1, h: 4 }, // Full width for sm (1 column)
-    ],
-    xs: [
-      { i: "status", x: 0, y: 0, w: 1, h: 2 },
-      { i: "chart", x: 0, y: 2, w: 1, h: 2 },
-      { i: "emails", x: 0, y: 4, w: 1, h: 2 },
-      { i: "console", x: 0, y: 6, w: 1, h: 2 },
-      { i: "template", x: 0, y: 8, w: 1, h: 2 },
-      { i: "settings", x: 0, y: 10, w: 1, h: 2 },
-      { i: "leads", x: 0, y: 12, w: 1, h: 4 }, // Full width for xs (1 column)
-    ],
-    xxs: [
-      { i: "status", x: 0, y: 0, w: 1, h: 2 },
-      { i: "chart", x: 0, y: 2, w: 1, h: 2 },
-      { i: "emails", x: 0, y: 4, w: 1, h: 2 },
-      { i: "console", x: 0, y: 6, w: 1, h: 2 },
-      { i: "template", x: 0, y: 8, w: 1, h: 2 },
-      { i: "settings", x: 0, y: 10, w: 1, h: 2 },
-      { i: "leads", x: 0, y: 12, w: 1, h: 4 }, // Full width for xxs (1 column)
+      { i: "leads-upload", x: 0, y: 8, w: 1, h: 2 },
+      { i: "template", x: 0, y: 10, w: 1, h: 2 },
+      { i: "settings", x: 0, y: 12, w: 1, h: 2 },
+      { i: "leads", x: 0, y: 14, w: 1, h: 4 },
     ],
   };
 
-  // Initialize layouts from localStorage or use defaults
   const [layouts, setLayouts] = React.useState<Layouts>(() => {
     const savedLayouts = getFromLS("layouts") as Layouts | null;
-    if (savedLayouts) {
-      const completeLayouts: Layouts = { ...defaultLayouts };
-      Object.keys(defaultLayouts).forEach((breakpoint: keyof Layouts) => {
-        if (savedLayouts[breakpoint]) {
-          completeLayouts[breakpoint] = savedLayouts[breakpoint];
-        }
-      });
-      return completeLayouts;
-    }
-    return defaultLayouts;
+    return savedLayouts || defaultLayouts;
   });
 
-  // Handle layout changes
   const handleLayoutChange = (currentLayout: any, allLayouts: any) => {
     if (isEditMode) {
       setLayouts(allLayouts);
@@ -198,7 +177,6 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
     }
   };
 
-  // Reset to default layout
   const resetLayout = () => {
     setLayouts(defaultLayouts);
     saveToLS("layouts", defaultLayouts);
