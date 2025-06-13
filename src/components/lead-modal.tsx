@@ -1,5 +1,6 @@
 import React from 'react';
 import { Input, Select, SelectItem, Textarea, Divider } from '@heroui/react';
+import StreetViewMap from '@/components/maps/StreetViewMap';
 import { Button } from './Button';
 import { Icon } from '@iconify/react';
 import { LEAD_STATUS_OPTIONS, CONTACT_ROLE_OPTIONS } from '@/constants/LeadStatus';
@@ -23,6 +24,8 @@ export interface LeadModalProps {
   addContact?: () => void;
   /** Remove an existing contact entry by index */
   removeContact?: (index: number) => void;
+  /** Handler for saving the lead data */
+  onSave?: () => void;
 }
 
 export const LeadModal: React.FC<LeadModalProps> = ({
@@ -32,7 +35,14 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   onContactChange = () => {},
   addContact = () => {},
   removeContact = () => {},
-}) => (
+  onClose, // Ensure onClose is destructured for the Cancel button
+  onSave = () => {}, // Destructure onSave with a default
+}) => {
+  const fullAddress = `${property.property_address}, ${property.property_city}, ${property.property_state} ${property.property_postal_code}`;
+  // Ensure onClose is provided a default if it's optional in props, though it's mandatory in LeadModalProps
+  const handleClose = onClose || (() => {}); 
+
+  return (
   <div className="space-y-6">
     {/* Property Info Section */}
     <h2 className="text-gray-400 uppercase tracking-wide text-sm">Property Info</h2>
@@ -129,6 +139,16 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
     <Divider />
 
+    {/* Street View Map Section */}
+    <h2 className="text-gray-400 uppercase tracking-wide text-sm">Street View</h2>
+    <div className="h-64 w-full">
+      {property.property_address && property.property_city && property.property_state && property.property_postal_code && (
+        <StreetViewMap apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!} address={fullAddress} />
+      )}
+    </div>
+
+    <Divider />
+
     {/* Contact Info Section */}
     <div className="flex items-center justify-between">
       <h2 className="text-gray-400 uppercase tracking-wide text-sm">Contact Info</h2>
@@ -193,7 +213,18 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       value={property.notes || ''}
       onValueChange={v => onPropertyChange('notes', v)}
     />
+
+    <Divider />
+    <div className="flex justify-end space-x-3 pt-4">
+      <Button variant="flat" onPress={handleClose}>
+        Cancel
+      </Button>
+      <Button color="primary" onPress={onSave}>
+        Save Lead
+      </Button>
+    </div>
   </div>
-);
+  );
+};
 export default LeadModal;
 // Note: LEAD_STATUS_OPTIONS and CONTACT_ROLE_OPTIONS should be imported or defined above.

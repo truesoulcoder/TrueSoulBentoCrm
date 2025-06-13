@@ -8,6 +8,7 @@ import { Button } from '@heroui/react';
 import { Icon } from '@iconify/react';
 
 interface StreetViewMapProps {
+  apiKey: string;
   address: string;
 }
 
@@ -27,7 +28,7 @@ const StatusDisplay: React.FC<{ message: string; icon: React.ReactNode }> = ({ m
   </div>
 );
 
-const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ address }) => {
+const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ apiKey, address }) => {
   const [position, setPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [status, setStatus] = useState<'loading' | 'error' | 'unavailable' | 'success'>('loading');
   const [hasStreetView, setHasStreetView] = useState(false);
@@ -126,12 +127,11 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ address }) => {
   }
 
   const mapOptions: google.maps.MapOptions = {
-    center: position, 
-    zoom: 17,
-    streetViewControl: false,
-    mapTypeControl: false,
-    fullscreenControl: false,
-    zoomControl: true,
+    center: position || { lat: 0, lng: 0 },
+    zoom: 14,
+    mapId: process.env.NEXT_PUBLIC_Maps_MAP_ID,
+    disableDefaultUI: true,
+    gestureHandling: "greedy",
   };
 
   return (
@@ -154,7 +154,6 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ address }) => {
       ) : (
         <div style={{ width: '100%', height: '100%', borderRadius: '0.5rem', overflow: 'hidden' }}>
           <Map
-            {...mapOptions}
             mapId={process.env.NEXT_PUBLIC_Maps_MAP_ID}
             colorScheme={ColorScheme.LIGHT}
             renderingType={RenderingType.VECTOR}

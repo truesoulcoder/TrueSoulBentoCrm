@@ -26,6 +26,20 @@ import LeadModal from "./lead-modal";
 
 type LeadData = Database['public']['Views']['properties_with_contacts']['Row'];
 
+// Define Contact and EditableLead types
+type Contact = {
+  id?: string; // Optional: if contacts have their own IDs from the database
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+};
+
+type EditableLead = LeadData & {
+  contactsArray: Contact[];
+};
+
+
 const fetcher = (url: string) => fetch(url).then(res => {
   if (!res.ok) {
     throw new Error('An error occurred while fetching the data.');
@@ -85,6 +99,8 @@ export const LeadsTable: React.FC = () => {
 
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [selectedPropertyId, setSelectedPropertyId] = React.useState<string | null>(null);
+  // Use EditableLead for state
+  const [currentEditingLead, setCurrentEditingLead] = React.useState<EditableLead | null>(null);
   
   const [page, setPage] = React.useState(1);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
@@ -98,6 +114,29 @@ export const LeadsTable: React.FC = () => {
 
   // --- MODIFICATION: REMOVED `filteredItems` useMemo block ---
   // Filtering is now done on the server, so we no longer need this.
+
+  // Helper function to transform LeadData to EditableLead
+  const transformLeadDataToEditableLead = (leadData: LeadData | null | {}): EditableLead | null => {
+    if (!leadData || !('property_id' in leadData) && Object.keys(leadData).length === 0) { // Check for null or empty object for new lead
+      return {
+        ...(leadData as LeadData), // Can be empty {}
+        contactsArray: [],
+      };
+    }
+    const lead = leadData as LeadData; 
+    const names = lead.contact_names?.split(',').map(n => n.trim()) || [];
+    const emails = lead.contact_emails?.split(',').map(e => e.trim()) || [];
+    const phones = lead.contact_phones?.split(',').map(p => p.trim()) || [];
+    // Roles are not in LeadData, so default them
+    const contactsArray: Contact[] = names.map((name, index) => ({
+        name,
+        email: emails[index] || '',
+        phone: phones[index] || '',
+        role: '', // Default role
+    })).filter(contact => contact.name); // Filter out contacts without a name
+
+    return { ...lead, contactsArray };
+  };
 
   const items = React.useMemo(() => {
     const start = (page - 1) * rowsPerPage;
@@ -137,16 +176,97 @@ export const LeadsTable: React.FC = () => {
 
   const handleAddLead = React.useCallback(() => {
     setSelectedPropertyId(null);
+    setCurrentEditingLead(transformLeadDataToEditableLead({} as LeadData));
     onOpen();
   }, [onOpen]);
 
   const handleEditLead = React.useCallback((propertyId: string) => {
     setSelectedPropertyId(propertyId);
+    const leadToEdit = leads?.find(lead => lead.property_id === propertyId);
+    if (leadToEdit) {
+      setCurrentEditingLead(transformLeadDataToEditableLead(leadToEdit));
+    }
     onOpen();
-  }, [onOpen]);
+  }, [onOpen, leads]);
+
+  const handlePropertyChange = React.useCallback((fieldName: string, value: any) => {
+    setCurrentEditingLead(prev => prev ? { ...prev, [fieldName]: value } as EditableLead : null);
+  }, []);
+
+  const handleContactChange = React.useCallback((index: number, fieldName: string, value: any) => {
+    setCurrentEditingLead(prev => {
+      if (!prev) return null;
+      const updatedContacts = [...prev.contactsArray];
+      if (updatedContacts[index]) {
+        updatedContacts[index] = { ...updatedContacts[index], [fieldName]: value };
+      }
+      return { ...prev, contactsArray: updatedContacts };
+    });
+  }, []);
+
+  const handleAddContact = React.useCallback(() => {
+    setCurrentEditingLead(prev => {
+      if (!prev) return null;
+      const newContact: Contact = { name: '', email: '', phone: '', role: '' };
+      return { ...prev, contactsArray: [...prev.contactsArray, newContact] };
+    });
+  }, []);
+
+  const handleRemoveContact = React.useCallback((index: number) => {
+    setCurrentEditingLead(prev => {
+      if (!prev) return null;
+      return { ...prev, contactsArray: prev.contactsArray.filter((_, i) => i !== index) };
+    });
+  }, []);
+
+  const handleSave = React.useCallback(async () => {
+    if (!currentEditingLead) return;
+
+    const isNewLead = !selectedPropertyId;
+    const url = isNewLead ? '/api/leads' : `/api/leads/${selectedPropertyId}`;
+    const method = isNewLead ? 'POST' : 'PUT';
+
+    const { contactsArray, ...propertyData } = currentEditingLead;
+    
+    // Remove property_id from payload if it's a new lead and property_id is null or empty
+    // to prevent sending a null property_id to the backend if it's an auto-incrementing PK.
+    const payloadPropertyData = { ...propertyData };
+    if (isNewLead && !payloadPropertyData.property_id) {
+      delete payloadPropertyData.property_id;
+    }
+
+    const payload = {
+        ...payloadPropertyData,
+        contact_names: contactsArray.map(c => c.name).join(','),
+        contact_emails: contactsArray.map(c => c.email).join(','),
+        contact_phones: contactsArray.map(c => c.phone).join(','),
+        // contact_roles: contactsArray.map(c => c.role).join(','), // If roles are stored
+    };
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Failed to save lead and parse error response.' }));
+            throw new Error(errorData.message || 'Failed to save lead');
+        }
+        mutate(); 
+        onClose(); 
+    } catch (error) {
+        console.error('Error saving lead:', error);
+        // TODO: Show error to user (e.g., using a toast notification)
+        // For now, alert the error message
+        alert(`Error saving lead: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [currentEditingLead, selectedPropertyId, onClose, mutate]);
   
   const handleCloseModal = () => {
-    mutate();
+    // No need to mutate here, handleSave will do it.
+    // Or, if closing without saving, we might want to refetch if data could be stale.
+    // For now, assume mutate in handleSave is sufficient.
     onClose();
   }
 
@@ -317,6 +437,13 @@ export const LeadsTable: React.FC = () => {
         isOpen={isOpen}
         onClose={handleCloseModal}
         propertyId={selectedPropertyId}
+        property={currentEditingLead} // This is now EditableLead | null
+        contacts={currentEditingLead?.contactsArray || []} // Pass the array directly
+        onPropertyChange={handlePropertyChange}
+        onContactChange={handleContactChange}
+        addContact={handleAddContact}
+        removeContact={handleRemoveContact}
+        onSave={handleSave} // Pass the save handler
       />
     </>
   );
