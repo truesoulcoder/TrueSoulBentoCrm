@@ -78,7 +78,8 @@ export const LeadsTable: React.FC = () => {
   const [filterValue, setFilterValue] = React.useState("");
   const { data: leads, error, isLoading, mutate } = useSWR<LeadData[]>(
     `/api/leads?search=${filterValue}`,
-    fetcher
+    fetcher,
+    { dedupingInterval: 0 } // Disables request de-duplication for instant search
   );
 
   const { isOpen, onOpen, onClose } = useDisclosure();

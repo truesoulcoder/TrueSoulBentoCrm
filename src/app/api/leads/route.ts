@@ -1,11 +1,11 @@
 // src/app/api/leads/route.ts
 import { createClient } from '@supabase/supabase-js';
-import { NextRequest, NextResponse } from 'next/server'; // Import NextRequest
+import { NextRequest, NextResponse } from 'next/server';
 import type { Database } from '@/types/supabase';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) { // Changed to NextRequest
+export async function GET(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -19,22 +19,16 @@ export async function GET(request: NextRequest) { // Changed to NextRequest
   const search = searchParams.get('search') || '';
 
   try {
-    let query = supabase
-      .from('properties_with_contacts')
-      .select('*');
-
-    // If a search term exists, apply a filter across multiple fields
+    let query;
     if (search) {
-      const searchTerm = `%${search}%`;
-      query = query.or(
-        `contact_names.ilike.${searchTerm},` +
-        `property_address.ilike.${searchTerm},` +
-        `property_city.ilike.${searchTerm},` +
-        `status.ilike.${searchTerm}`
-      );
+      // Use the new RPC call for performing the search
+      query = supabase.rpc('search_properties_with_contacts', { search_term: search });
     } else {
-      // If no search, limit the initial load to 1000 records
-      query = query.limit(1000);
+      // Original behavior for no search term (initial load)
+      query = supabase
+        .from('properties_with_contacts')
+        .select('*')
+        .limit(1000);
     }
 
     const { data, error, status } = await query;
