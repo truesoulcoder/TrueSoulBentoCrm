@@ -23,16 +23,13 @@ import {
   Modal
 } from "@heroui/react";
 import type { Database } from "@/types/supabase";
-import LeadModal from "./lead-modal"; // Corrected import
+import LeadModal from "./lead-modal";
 
 type LeadData = Database['public']['Views']['properties_with_contacts']['Row'];
 
 const fetcher = (url: string) => fetch(url).then(res => {
   if (!res.ok) {
     const error = new Error('An error occurred while fetching the data.');
-    // Attach extra info to the error object.
-    // error.info = await res.json();
-    // error.status = res.status;
     throw error;
   }
   return res.json();
@@ -76,11 +73,22 @@ const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "wa
 
 export const LeadsTable: React.FC = () => {
   const [filterValue, setFilterValue] = React.useState("");
+  const [debouncedFilterValue, setDebouncedFilterValue] = React.useState("");
+
   const { data: leads, error, isLoading, mutate } = useSWR<LeadData[]>(
-    `/api/leads?search=${filterValue}`,
-    fetcher,
-    { dedupingInterval: 0 } // Disables request de-duplication for instant search
+    `/api/leads?search=${debouncedFilterValue}`,
+    fetcher
   );
+
+  React.useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedFilterValue(filterValue);
+    }, 300); // 300ms debounce delay
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [filterValue]);
 
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [selectedPropertyId, setSelectedPropertyId] = React.useState<string | null>(null);
@@ -141,7 +149,7 @@ export const LeadsTable: React.FC = () => {
   };
   
   const handleSaveSuccess = () => {
-      mutate(); // Re-fetch SWR data
+      mutate();
       handleCloseModal();
   };
 
@@ -296,7 +304,7 @@ export const LeadsTable: React.FC = () => {
             items={items}
             isLoading={isLoading}
             loadingContent={<Spinner label="Loading leads..." />}
-            emptyContent={filterValue ? "No leads found matching your search." : "No leads to display."}
+            emptyContent={debouncedFilterValue ? "No leads found matching your search." : "No leads to display."}
           >
             {(item) => (<TableRow key={item.property_id}>{(columnKey) => <TableCell>{renderCell(item, columnKey)}</TableCell>}</TableRow>)}
           </TableBody>
