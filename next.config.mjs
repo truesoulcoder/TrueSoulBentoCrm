@@ -14,6 +14,12 @@ const nextConfig = {
         hostname: 'lefvtgqockzqkasylzwb.supabase.co',
         port: '',
         pathname: '/storage/v1/object/public/media/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'img.heroui.chat',
+        port: '',
+        pathname: '/**',
       }
     ],
   },
@@ -25,23 +31,22 @@ const nextConfig = {
     });
 
     if (!isServer) {
-        config.resolve.fallback = {
-            ...config.resolve.fallback,
-            "stream": require.resolve("stream-browserify"),
-            "crypto": require.resolve("crypto-browserify"),
-            "util": require.resolve("util/"),
-            "http": require.resolve("stream-http"),
-            "https": require.resolve("https-browserify"),
-            "os": require.resolve("os-browserify/browser"),
-            "path": require.resolve("path-browserify"),
-            "zlib": require.resolve("browserify-zlib"),
-            "fs": false, // Indicates that this module is not available on the client
-            "net": false,
-            "tls": false,
-        };
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        "stream": "stream-browserify",
+        "crypto": "crypto-browserify",
+        "util": "util/",
+        "http": "stream-http",
+        "https": "https-browserify",
+        "os": "os-browserify/browser",
+        "path": "path-browserify",
+        "zlib": "browserify-zlib",
+        "fs": false,
+        "net": false,
+        "tls": false,
+      };
     }
-    
-    // Return the modified config
+
     return config;
   },
 };

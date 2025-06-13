@@ -20,29 +20,20 @@ import {
   Spinner,
   useDisclosure,
   Input,
+  Modal
 } from "@heroui/react";
-import { Database } from "@/types/supabase";
-import LeadModal from "./lead-modal";
+import type { Database } from "@/types/supabase";
+import LeadModal from "./lead-modal"; // Corrected import
 
 type LeadData = Database['public']['Views']['properties_with_contacts']['Row'];
 
-// Define Contact and EditableLead types
-type Contact = {
-  id?: string; // Optional: if contacts have their own IDs from the database
-  name: string;
-  email: string;
-  phone: string;
-  role: string;
-};
-
-type EditableLead = LeadData & {
-  contactsArray: Contact[];
-};
-
-
 const fetcher = (url: string) => fetch(url).then(res => {
   if (!res.ok) {
-    throw new Error('An error occurred while fetching the data.');
+    const error = new Error('An error occurred while fetching the data.');
+    // Attach extra info to the error object.
+    // error.info = await res.json();
+    // error.status = res.status;
+    throw error;
   }
   return res.json();
 });
@@ -57,7 +48,6 @@ const formatCurrency = (value: number | null | undefined) => {
   }).format(value);
 };
 
-// Column definitions for the table
 const columns = [
   { name: "STATUS", uid: "status", sortable: true },
   { name: "CONTACTS", uid: "contact_names", sortable: true },
@@ -67,7 +57,7 @@ const columns = [
   { name: "TYPE", uid: "property_type", sortable: true },
   { name: "LIST PRICE", uid: "mls_list_price", sortable: true },
   { name: "DOM", uid: "mls_days_on_market", sortable: true },
-  { name: "EDIT", uid: "actions", sortable: false },
+  { name: "ACTIONS", uid: "actions", sortable: false },
 ];
 
 const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "warning" | "danger" | "default" } = {
@@ -86,63 +76,27 @@ const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "wa
 
 export const LeadsTable: React.FC = () => {
   const [filterValue, setFilterValue] = React.useState("");
-  // NOTE: For better performance, consider debouncing the filterValue before passing it to SWR.
-  
-  // --- MODIFICATION START ---
-  // SWR now uses a dynamic key that includes the search filter.
-  // This will automatically re-fetch data from the API when `filterValue` changes.
   const { data: leads, error, isLoading, mutate } = useSWR<LeadData[]>(
-    `/api/leads?search=${filterValue}`, 
+    `/api/leads?search=${filterValue}`,
     fetcher
   );
-  // --- MODIFICATION END ---
 
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [selectedPropertyId, setSelectedPropertyId] = React.useState<string | null>(null);
-  // Use EditableLead for state
-  const [currentEditingLead, setCurrentEditingLead] = React.useState<EditableLead | null>(null);
-  
+
   const [page, setPage] = React.useState(1);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
-  
+
   const [sortDescriptor, setSortDescriptor] = React.useState({
     column: "market_value",
     direction: "descending" as "ascending" | "descending",
   });
-  
+
   const [selectedKeys, setSelectedKeys] = React.useState(new Set<string>());
-
-  // --- MODIFICATION: REMOVED `filteredItems` useMemo block ---
-  // Filtering is now done on the server, so we no longer need this.
-
-  // Helper function to transform LeadData to EditableLead
-  const transformLeadDataToEditableLead = (leadData: LeadData | null | {}): EditableLead | null => {
-    if (!leadData || !('property_id' in leadData) && Object.keys(leadData).length === 0) { // Check for null or empty object for new lead
-      return {
-        ...(leadData as LeadData), // Can be empty {}
-        contactsArray: [],
-      };
-    }
-    const lead = leadData as LeadData; 
-    const names = lead.contact_names?.split(',').map(n => n.trim()) || [];
-    const emails = lead.contact_emails?.split(',').map(e => e.trim()) || [];
-    const phones = lead.contact_phones?.split(',').map(p => p.trim()) || [];
-    // Roles are not in LeadData, so default them
-    const contactsArray: Contact[] = names.map((name, index) => ({
-        name,
-        email: emails[index] || '',
-        phone: phones[index] || '',
-        role: '', // Default role
-    })).filter(contact => contact.name); // Filter out contacts without a name
-
-    return { ...lead, contactsArray };
-  };
 
   const items = React.useMemo(() => {
     const start = (page - 1) * rowsPerPage;
     const end = start + rowsPerPage;
-
-    // Use `leads` directly from SWR, which is already filtered by the API
     const itemsToProcess = leads || [];
 
     const sortedLeads = [...itemsToProcess].sort((a, b) => {
@@ -152,7 +106,7 @@ export const LeadsTable: React.FC = () => {
       if (first == null && second == null) return 0;
       if (first == null) return 1;
       if (second == null) return -1;
-      
+
       const cmp = String(first).localeCompare(String(second), undefined, { numeric: true });
       return sortDescriptor.direction === "descending" ? -cmp : cmp;
     });
@@ -161,119 +115,36 @@ export const LeadsTable: React.FC = () => {
   }, [page, leads, rowsPerPage, sortDescriptor]);
 
   const onSearchChange = React.useCallback((value?: string) => {
-    if (value) {
-      setFilterValue(value);
-      setPage(1);
-    } else {
-      setFilterValue("");
-    }
+    setFilterValue(value || "");
+    setPage(1);
   }, []);
 
-  const onClear = React.useCallback(()=>{
-    setFilterValue("")
-    setPage(1)
-  },[])
+  const onClear = React.useCallback(() => {
+    setFilterValue("");
+    setPage(1);
+  }, []);
 
   const handleAddLead = React.useCallback(() => {
     setSelectedPropertyId(null);
-    setCurrentEditingLead(transformLeadDataToEditableLead({} as LeadData));
     onOpen();
   }, [onOpen]);
 
   const handleEditLead = React.useCallback((propertyId: string) => {
     setSelectedPropertyId(propertyId);
-    const leadToEdit = leads?.find(lead => lead.property_id === propertyId);
-    if (leadToEdit) {
-      setCurrentEditingLead(transformLeadDataToEditableLead(leadToEdit));
-    }
     onOpen();
-  }, [onOpen, leads]);
-
-  const handlePropertyChange = React.useCallback((fieldName: string, value: any) => {
-    setCurrentEditingLead(prev => prev ? { ...prev, [fieldName]: value } as EditableLead : null);
-  }, []);
-
-  const handleContactChange = React.useCallback((index: number, fieldName: string, value: any) => {
-    setCurrentEditingLead(prev => {
-      if (!prev) return null;
-      const updatedContacts = [...prev.contactsArray];
-      if (updatedContacts[index]) {
-        updatedContacts[index] = { ...updatedContacts[index], [fieldName]: value };
-      }
-      return { ...prev, contactsArray: updatedContacts };
-    });
-  }, []);
-
-  const handleAddContact = React.useCallback(() => {
-    setCurrentEditingLead(prev => {
-      if (!prev) return null;
-      const newContact: Contact = { name: '', email: '', phone: '', role: '' };
-      return { ...prev, contactsArray: [...prev.contactsArray, newContact] };
-    });
-  }, []);
-
-  const handleRemoveContact = React.useCallback((index: number) => {
-    setCurrentEditingLead(prev => {
-      if (!prev) return null;
-      return { ...prev, contactsArray: prev.contactsArray.filter((_, i) => i !== index) };
-    });
-  }, []);
-
-  const handleSave = React.useCallback(async () => {
-    if (!currentEditingLead) return;
-
-    const isNewLead = !selectedPropertyId;
-    const url = isNewLead ? '/api/leads' : `/api/leads/${selectedPropertyId}`;
-    const method = isNewLead ? 'POST' : 'PUT';
-
-    const { contactsArray, ...propertyDataFromLead } = currentEditingLead; // Renamed to avoid confusion
-
-    let payloadPropertyData: Omit<typeof propertyDataFromLead, 'property_id'> & { property_id?: string | null };
-
-    if (isNewLead && !propertyDataFromLead.property_id) {
-      const { property_id, ...rest } = propertyDataFromLead;
-      payloadPropertyData = rest;
-    } else {
-      payloadPropertyData = { ...propertyDataFromLead };
-    }
-
-    const payload = {
-        ...payloadPropertyData,
-        contact_names: contactsArray.map(c => c.name).join(','),
-        contact_emails: contactsArray.map(c => c.email).join(','),
-        contact_phones: contactsArray.map(c => c.phone).join(','),
-        // contact_roles: contactsArray.map(c => c.role).join(','), // If roles are stored
-    };
-
-    try {
-        const response = await fetch(url, {
-            method: method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ message: 'Failed to save lead and parse error response.' }));
-            throw new Error(errorData.message || 'Failed to save lead');
-        }
-        mutate(); 
-        onClose(); 
-    } catch (error) {
-        console.error('Error saving lead:', error);
-        // TODO: Show error to user (e.g., using a toast notification)
-        // For now, alert the error message
-        alert(`Error saving lead: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }, [currentEditingLead, selectedPropertyId, onClose, mutate]);
+  }, [onOpen]);
   
   const handleCloseModal = () => {
-    // No need to mutate here, handleSave will do it.
-    // Or, if closing without saving, we might want to refetch if data could be stale.
-    // For now, assume mutate in handleSave is sufficient.
     onClose();
-  }
+    setSelectedPropertyId(null);
+  };
+  
+  const handleSaveSuccess = () => {
+      mutate(); // Re-fetch SWR data
+      handleCloseModal();
+  };
 
   const renderCell = React.useCallback((lead: LeadData, columnKey: React.Key) => {
-    // ... (This function remains unchanged)
     switch (columnKey) {
       case "status":
         const statusKey = lead.status as keyof typeof statusColorMap;
@@ -308,8 +179,6 @@ export const LeadsTable: React.FC = () => {
         );
       case "market_value":
         return formatCurrency(lead.market_value);
-      case "assessed_total":
-        return formatCurrency(lead.assessed_total);
       case "mls_list_price":
         return formatCurrency(lead.mls_list_price);
       case "actions":
@@ -327,7 +196,7 @@ export const LeadsTable: React.FC = () => {
         return value === null || value === undefined ? "N/A" : String(value);
     }
   }, [handleEditLead]);
-  
+
   const topContent = React.useMemo(() => {
     return (
       <div className="flex flex-col gap-4">
@@ -347,14 +216,12 @@ export const LeadsTable: React.FC = () => {
             </Button>
           </div>
         </div>
-        {/* MODIFICATION: Use `leads?.length` for the total count */}
         <span className="text-default-400 text-small">Total {leads?.length || 0} leads found</span>
       </div>
     );
   }, [filterValue, onSearchChange, onClear, handleAddLead, leads?.length]);
 
   const bottomContent = React.useMemo(() => {
-    // MODIFICATION: Use `leads?.length` to calculate total pages
     const totalPages = leads ? Math.ceil(leads.length / rowsPerPage) : 0;
     return (
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 py-2">
@@ -424,8 +291,8 @@ export const LeadsTable: React.FC = () => {
           <TableHeader columns={columns}>
             {(column) => (<TableColumn key={column.uid} align={column.uid === "actions" ? "center" : "start"} allowsSorting={column.sortable}>{column.name}</TableColumn>)}
           </TableHeader>
-          <TableBody 
-            items={items} 
+          <TableBody
+            items={items}
             isLoading={isLoading}
             loadingContent={<Spinner label="Loading leads..." />}
             emptyContent={filterValue ? "No leads found matching your search." : "No leads to display."}
@@ -434,18 +301,12 @@ export const LeadsTable: React.FC = () => {
           </TableBody>
         </Table>
       </div>
-      
+
       <LeadModal
         isOpen={isOpen}
         onClose={handleCloseModal}
         propertyId={selectedPropertyId}
-        property={currentEditingLead} // This is now EditableLead | null
-        contacts={currentEditingLead?.contactsArray || []} // Pass the array directly
-        onPropertyChange={handlePropertyChange}
-        onContactChange={handleContactChange}
-        addContact={handleAddContact}
-        removeContact={handleRemoveContact}
-        onSave={handleSave} // Pass the save handler
+        onSaveSuccess={handleSaveSuccess}
       />
     </>
   );
