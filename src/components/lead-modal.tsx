@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, ChangeEvent } from 'react';
+import useSWR from 'swr';
 import {
   Modal,
   ModalContent,
@@ -26,6 +27,7 @@ import FloatingLabelTextarea from '@/components/ui/FloatingLabelTextarea';
 // Define types for convenience
 type Property = Tables<'properties'>;
 type Contact = Tables<'contacts'>;
+type Profile = Pick<Tables<'profiles'>, 'id' | 'full_name' | 'email'>;
 
 // --- Constants (aligned with supabase types and concept) ---
 const LEAD_STATUS_OPTIONS = [
@@ -36,6 +38,12 @@ const LEAD_STATUS_OPTIONS = [
 const CONTACT_ROLE_OPTIONS: (Tables<'contacts'>['role'])[] = ["owner", "alternate_contact", "mls_agent"];
 const PROPERTY_TYPE_OPTIONS = ["Single Family", "Condo", "Townhouse", "Multi-Family", "Vacant Land"];
 
+// --- SWR Fetcher ---
+const fetcher = (url: string) => fetch(url).then(res => {
+  if (res.status === 403) return null; // Handle unauthorized case for user fetching
+  if (!res.ok) throw new Error('An error occurred while fetching the data.');
+  return res.json();
+});
 
 // --- Helper to provide an empty initial state ---
 const getInitialPropertyState = (): TablesUpdate<'properties'> => ({
@@ -87,6 +95,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const isNewLead = !propertyId;
+
+  // Fetch all users for the assignment dropdown.
+  // SWR will cache this. The API route ensures only superadmins get data.
+  const { data: users, error: usersError } = useSWR<Profile[]>('/api/users', fetcher);
 
   useEffect(() => {
     if (isOpen) {
@@ -215,14 +227,20 @@ const LeadModal: React.FC<LeadModalProps> = ({
 
                 {/* Right Column */}
                 <div className="flex flex-col space-y-6">
-                  <FloatingLabelInput label="Market Region" value={property.market_region || ''} onChange={e => handlePropertyChange('market_region', e.target.value)} />
-                  <FloatingLabelInput label="Assigned User" value={(property as any).assigned_user || ''} onChange={e => handlePropertyChange('assigned_user', e.target.value)} />
+                  {/* Show dropdown only if user is authorized (superadmin) and users are loaded */}
+                  {users && users.length > 0 ? (
+                    <FloatingLabelSelect label="Assigned User" value={property.user_id || ''} onChange={(e) => handlePropertyChange('user_id', e.target.value)}>
+                        {users.map(user => <option key={user.id} value={user.id}>{user.full_name} ({user.email})</option>)}
+                    </FloatingLabelSelect>
+                  ) : (
+                    <FloatingLabelInput label="Market Region" value={property.market_region || ''} onChange={e => handlePropertyChange('market_region', e.target.value)} />
+                  )}
                   <FloatingLabelSelect label="Property Type" value={property.property_type || ''} onChange={(e) => handleSelectChange(e, 'property_type')}>
                       {PROPERTY_TYPE_OPTIONS.map(type => <option key={type} value={type}>{type}</option>)}
                   </FloatingLabelSelect>
                   <div className="grid grid-cols-2 gap-4">
-                      <FloatingLabelInput label="Market Value" type="number" value={String(property.market_value || '')} onChange={e => handlePropertyChange('market_value', e.target.value)} />
-                      <FloatingLabelInput label="Wholesale Value" type="number" value={String(property.wholesale_value || '')} onChange={e => handlePropertyChange('wholesale_value', e.target.value)} />
+                      <FloatingLabelInput label="Market Value" type="number" value={String(property.market_value || '')} onChange={e => handlePropertyChange('market_value', e.target.value)} startContent="$" />
+                      <FloatingLabelInput label="Wholesale Value" type="number" value={String(property.wholesale_value || '')} onChange={e => handlePropertyChange('wholesale_value', e.target.value)} startContent="$" />
                   </div>
                 </div>
               </div>

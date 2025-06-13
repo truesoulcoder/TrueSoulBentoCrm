@@ -6,9 +6,7 @@ import type { Database } from '@/types/supabase';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  // FIX: Use the admin client to bypass RLS for fetching all campaigns.
   const supabase = await createAdminServerClient();
-
   try {
     const { data, error } = await supabase
       .from('campaigns')
@@ -22,7 +20,6 @@ export async function GET() {
         { status: 500 }
       );
     }
-
     return NextResponse.json(data);
   } catch (error) {
     const errorMessage =
@@ -32,25 +29,29 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  // FIX: Use the admin client for creating campaigns as well.
   const supabase = await createAdminServerClient();
-  const campaignData = await request.json();
-
   try {
-    // Note: User ID is still required in the table, but for this API,
-    // we are acting as the system. We'll need to sort out user association later if needed.
-    const { name, status, user_id } = campaignData;
+    const campaignData = await request.json();
+    const { name, status, user_id, market_region_id, daily_limit, time_window_hours } = campaignData;
 
-    if (!name || !user_id) {
+    // Validate required fields
+    if (!name || !user_id || !market_region_id) {
       return NextResponse.json(
-        { error: 'Campaign name and user_id are required' },
+        { error: 'name, user_id, and market_region_id are required.' },
         { status: 400 }
       );
     }
 
     const { data, error: dbError } = await supabase
       .from('campaigns')
-      .insert([{ name, status: status || 'draft', user_id }])
+      .insert([{ 
+        name, 
+        status: status || 'draft', 
+        user_id,
+        market_region_id,
+        daily_limit: daily_limit || 100,
+        time_window_hours: time_window_hours || 8
+      }])
       .select()
       .single();
 

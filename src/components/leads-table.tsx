@@ -54,7 +54,6 @@ const columns = [
   { name: "TYPE", uid: "property_type", sortable: true },
   { name: "LIST PRICE", uid: "mls_list_price", sortable: true },
   { name: "DOM", uid: "mls_days_on_market", sortable: true },
-  { name: "ACTIONS", uid: "actions", sortable: false },
 ];
 
 const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "warning" | "danger" | "default" } = {
@@ -83,7 +82,7 @@ export const LeadsTable: React.FC = () => {
   React.useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedFilterValue(filterValue);
-    }, 300); // 300ms debounce delay
+    }, 300);
 
     return () => {
       clearTimeout(handler);
@@ -190,21 +189,11 @@ export const LeadsTable: React.FC = () => {
         return formatCurrency(lead.market_value);
       case "mls_list_price":
         return formatCurrency(lead.mls_list_price);
-      case "actions":
-        return (
-          <div className="relative flex items-center gap-2">
-            <Tooltip content="Edit lead">
-              <Button isIconOnly size="sm" variant="light" onPress={() => handleEditLead(lead.property_id!)}>
-                <Icon icon="lucide:edit" className="text-default-500" width={18} />
-              </Button>
-            </Tooltip>
-          </div>
-        );
       default:
         const value = lead[columnKey as keyof LeadData];
         return value === null || value === undefined ? "N/A" : String(value);
     }
-  }, [handleEditLead]);
+  }, []);
 
   const topContent = React.useMemo(() => {
     return (
@@ -294,7 +283,14 @@ export const LeadsTable: React.FC = () => {
           sortDescriptor={sortDescriptor as any}
           topContent={topContent}
           bottomContent={bottomContent}
-          classNames={{ wrapper: "flex-grow min-h-[500px]", base: "h-full", table: "min-w-full" }}
+          classNames={{
+            wrapper: "flex-grow min-h-[500px]",
+            base: "h-full",
+            table: "min-w-full",
+            // Added styles for sticky header and footer
+            thead: "sticky top-0 z-20 bg-content1",
+            bottomContent: "sticky bottom-0 z-20 bg-content1 p-4 border-t border-divider",
+          }}
           removeWrapper
         >
           <TableHeader columns={columns}>
@@ -306,7 +302,11 @@ export const LeadsTable: React.FC = () => {
             loadingContent={<Spinner label="Loading leads..." />}
             emptyContent={debouncedFilterValue ? "No leads found matching your search." : "No leads to display."}
           >
-            {(item) => (<TableRow key={item.property_id}>{(columnKey) => <TableCell>{renderCell(item, columnKey)}</TableCell>}</TableRow>)}
+            {(item) => (
+              <TableRow key={item.property_id} onPress={() => handleEditLead(item.property_id!)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-100">
+                {(columnKey) => <TableCell>{renderCell(item, columnKey)}</TableCell>}
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>

@@ -1,3 +1,4 @@
+// src/components/draggable-dashboard.tsx
 import React from "react";
 import { Icon } from "@iconify/react";
 import { Card, CardHeader, CardBody, Button } from "@heroui/react";
@@ -5,7 +6,7 @@ import { Responsive, WidthProvider } from "react-grid-layout";
 import { CampaignChart } from "./campaign-chart";
 import { CampaignConsole } from "./campaign-console";
 import { CampaignStatus } from "./campaign-status";
-import { EmailSelector } from "./email-selector";
+import { CampaignEngineManager } from "./campaign-engine-manager"; // Import the new component
 import { TemplatePreview } from "./template-preview";
 import { CampaignSettings } from "./campaign-settings";
 import { LeadsTable } from "./leads-table";
@@ -59,12 +60,12 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       minSize: { w: 2, h: 2 },
     },
     {
-      i: "emails",
-      title: "Email Lists",
-      subtitle: "Select target audience",
-      component: <EmailSelector />,
+      i: "engine-manager", // Replaced "emails" with "engine-manager"
+      title: "Engine Control",
+      subtitle: "Manage campaign state",
+      component: <CampaignEngineManager />, // Use the new component
       defaultSize: { w: 1, h: 2 },
-      minSize: { w: 1, h: 1 },
+      minSize: { w: 1, h: 2 },
     },
     {
       i: "console",
@@ -132,13 +133,12 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
     }
   };
 
-  // Updated layouts with "leads" at the top (y: 0)
   const defaultLayouts: Layouts = {
     lg: [
       { i: "leads", x: 0, y: 0, w: 4, h: 4 },
       { i: "status", x: 0, y: 4, w: 1, h: 2 },
       { i: "chart", x: 1, y: 4, w: 2, h: 2 },
-      { i: "emails", x: 3, y: 4, w: 1, h: 2 },
+      { i: "engine-manager", x: 3, y: 4, w: 1, h: 2 }, // Updated key
       { i: "console", x: 0, y: 6, w: 2, h: 2 },
       { i: "leads-upload", x: 2, y: 6, w: 2, h: 2 },
       { i: "template", x: 0, y: 8, w: 2, h: 2 },
@@ -148,7 +148,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       { i: "leads", x: 0, y: 0, w: 3, h: 4 },
       { i: "status", x: 0, y: 4, w: 1, h: 2 },
       { i: "chart", x: 1, y: 4, w: 2, h: 2 },
-      { i: "emails", x: 0, y: 6, w: 1, h: 2 },
+      { i: "engine-manager", x: 0, y: 6, w: 1, h: 2 }, // Updated key
       { i: "console", x: 1, y: 6, w: 2, h: 2 },
       { i: "leads-upload", x: 0, y: 8, w: 2, h: 2 },
       { i: "template", x: 0, y: 10, w: 3, h: 2 },
@@ -158,7 +158,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       { i: "leads", x: 0, y: 0, w: 1, h: 4 },
       { i: "status", x: 0, y: 4, w: 1, h: 2 },
       { i: "chart", x: 0, y: 6, w: 1, h: 2 },
-      { i: "emails", x: 0, y: 8, w: 1, h: 2 },
+      { i: "engine-manager", x: 0, y: 8, w: 1, h: 2 }, // Updated key
       { i: "console", x: 0, y: 10, w: 1, h: 2 },
       { i: "leads-upload", x: 0, y: 12, w: 1, h: 2 },
       { i: "template", x: 0, y: 14, w: 1, h: 2 },
