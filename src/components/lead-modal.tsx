@@ -35,7 +35,6 @@ const LEAD_STATUS_OPTIONS = [
 ];
 const CONTACT_ROLE_OPTIONS: (Tables<'contacts'>['role'])[] = ["owner", "alternate_contact", "mls_agent"];
 const PROPERTY_TYPE_OPTIONS = ["Single Family", "Condo", "Townhouse", "Multi-Family", "Vacant Land"];
-const MLS_STATUS_OPTIONS = ["Active", "Pending", "Sold", "Expired", "Withdrawn"];
 
 
 // --- Helper to provide an empty initial state ---
@@ -49,21 +48,12 @@ const getInitialPropertyState = (): TablesUpdate<'properties'> => ({
   market_region: '',
   property_type: 'Single Family',
   square_footage: null,
-  lot_size_sqft: null,
   beds: null,
   baths: null,
   year_built: null,
   market_value: null,
   wholesale_value: null,
-  assessed_total: null,
   notes: '',
-  mls_status: null,
-  mls_days_on_market: null,
-  mls_list_price: null,
-  mls_sqft: null,
-  mls_beds: null,
-  mls_baths: null,
-  mls_year_built: null,
   user_id: '',
 });
 
@@ -124,7 +114,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
   const handlePropertyChange = (name: string, value: any) => {
     setProperty(prev => ({ ...prev, [name]: value }));
   };
-  
+
   const handleContactChange = (index: number, name: string, value: any) => {
     setContacts(prev => {
       const newContacts = [...prev];
@@ -181,11 +171,11 @@ const LeadModal: React.FC<LeadModalProps> = ({
 
   const modalTitle = isNewLead ? "Add New Lead" : "Edit Lead";
 
-  // Event handler for custom select
+  // Event handler for our custom select component
   const handleSelectChange = (e: ChangeEvent<HTMLSelectElement>, field: keyof Property) => {
     handlePropertyChange(field, e.target.value);
   };
-    // Event handler for custom contact select
+    // Event handler for our custom contact select component
   const handleContactSelectChange = (e: ChangeEvent<HTMLSelectElement>, index: number, field: keyof Contact) => {
     handleContactChange(index, field, e.target.value);
   };
@@ -200,43 +190,39 @@ const LeadModal: React.FC<LeadModalProps> = ({
               <Spinner label="Loading Lead Data..." />
             </div>
           ) : (
-            <div className="space-y-8">
-              {/* Property Info Section */}
-              <div>
-                <h2 className="text-gray-500 dark:text-gray-400 uppercase tracking-widest text-sm font-bold mb-4">Property Info</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                  {/* Left Column */}
-                  <div className="flex flex-col space-y-4">
-                    <FloatingLabelSelect label="Lead Status" value={property.status || ''} onChange={(e) => handleSelectChange(e, 'status')}>
-                        {LEAD_STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
-                    </FloatingLabelSelect>
-                    <FloatingLabelInput label="Property Address" value={property.property_address || ''} onChange={e => handlePropertyChange('property_address', e.target.value)} />
-                    <div className="grid grid-cols-6 gap-4">
-                      <FloatingLabelInput label="City" value={property.property_city || ''} onChange={e => handlePropertyChange('property_city', e.target.value)} className="col-span-3" />
-                      <FloatingLabelInput label="State" maxLength={2} value={property.property_state || ''} onChange={e => handlePropertyChange('property_state', e.target.value)} className="col-span-1" />
-                      <FloatingLabelInput label="Postal Code" value={property.property_postal_code || ''} onChange={e => handlePropertyChange('property_postal_code', e.target.value)} className="col-span-2" />
-                    </div>
-                    <div className="grid grid-cols-6 gap-4">
-                      <FloatingLabelInput label="Square Footage" type="number" value={String(property.square_footage || '')} onChange={e => handlePropertyChange('square_footage', e.target.value)} className="col-span-2" />
-                      <FloatingLabelInput label="Beds" type="number" value={String(property.beds || '')} onChange={e => handlePropertyChange('beds', e.target.value)} className="col-span-1" />
-                      <FloatingLabelInput label="Baths" type="number" step="0.1" value={String(property.baths || '')} onChange={e => handlePropertyChange('baths', e.target.value)} className="col-span-1" />
-                      <FloatingLabelInput label="Year Built" type="number" value={String(property.year_built || '')} onChange={e => handlePropertyChange('year_built', e.target.value)} className="col-span-2" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <FloatingLabelInput label="Market Value" type="number" startContent="$" value={String(property.market_value || '')} onChange={e => handlePropertyChange('market_value', e.target.value)} />
-                      <FloatingLabelInput label="Wholesale Value" type="number" startContent="$" value={String(property.wholesale_value || '')} onChange={e => handlePropertyChange('wholesale_value', e.target.value)} />
-                    </div>
+            <div className="space-y-8 py-4">
+              {/* --- Using the exact layout from LEAD-MODAL-DESIGN.jpg --- */}
+              <h2 className="text-gray-500 dark:text-gray-400 uppercase tracking-widest text-sm font-bold">Property Info</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                {/* Left Column */}
+                <div className="flex flex-col space-y-6">
+                  <FloatingLabelSelect label="Lead Status" value={property.status || ''} onChange={(e) => handleSelectChange(e, 'status')}>
+                      {LEAD_STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
+                  </FloatingLabelSelect>
+                  <FloatingLabelInput label="Property Address" value={property.property_address || ''} onChange={e => handlePropertyChange('property_address', e.target.value)} />
+                  <div className="grid grid-cols-3 gap-4">
+                    <FloatingLabelInput label="City" value={property.property_city || ''} onChange={e => handlePropertyChange('property_city', e.target.value)} />
+                    <FloatingLabelInput label="State" maxLength={2} value={property.property_state || ''} onChange={e => handlePropertyChange('property_state', e.target.value)} />
+                    <FloatingLabelInput label="Postal Code" value={property.property_postal_code || ''} onChange={e => handlePropertyChange('property_postal_code', e.target.value)} />
                   </div>
+                  <div className="grid grid-cols-4 gap-4">
+                    <FloatingLabelInput label="Square Footage" type="number" value={String(property.square_footage || '')} onChange={e => handlePropertyChange('square_footage', e.target.value)} />
+                    <FloatingLabelInput label="Beds" type="number" value={String(property.beds || '')} onChange={e => handlePropertyChange('beds', e.target.value)} />
+                    <FloatingLabelInput label="Baths" type="number" step="0.1" value={String(property.baths || '')} onChange={e => handlePropertyChange('baths', e.target.value)} />
+                    <FloatingLabelInput label="Year Built" type="number" value={String(property.year_built || '')} onChange={e => handlePropertyChange('year_built', e.target.value)} />
+                  </div>
+                </div>
 
-                  {/* Right Column */}
-                  <div className="flex flex-col space-y-4">
-                    <FloatingLabelInput label="Market Region" value={property.market_region || ''} onChange={e => handlePropertyChange('market_region', e.target.value)} />
-                    <FloatingLabelSelect label="Property Type" value={property.property_type || ''} onChange={(e) => handleSelectChange(e, 'property_type')}>
-                        {PROPERTY_TYPE_OPTIONS.map(type => <option key={type} value={type}>{type}</option>)}
-                    </FloatingLabelSelect>
-                    <div className="h-64 w-full rounded-lg overflow-hidden bg-default-100">
-                      <StreetViewMap apiKey={process.env.NEXT_PUBLIC_Maps_API_KEY!} address={fullAddress} />
-                    </div>
+                {/* Right Column */}
+                <div className="flex flex-col space-y-6">
+                  <FloatingLabelInput label="Market Region" value={property.market_region || ''} onChange={e => handlePropertyChange('market_region', e.target.value)} />
+                  <FloatingLabelInput label="Assigned User" value={(property as any).assigned_user || ''} onChange={e => handlePropertyChange('assigned_user', e.target.value)} />
+                  <FloatingLabelSelect label="Property Type" value={property.property_type || ''} onChange={(e) => handleSelectChange(e, 'property_type')}>
+                      {PROPERTY_TYPE_OPTIONS.map(type => <option key={type} value={type}>{type}</option>)}
+                  </FloatingLabelSelect>
+                  <div className="grid grid-cols-2 gap-4">
+                      <FloatingLabelInput label="Market Value" type="number" value={String(property.market_value || '')} onChange={e => handlePropertyChange('market_value', e.target.value)} />
+                      <FloatingLabelInput label="Wholesale Value" type="number" value={String(property.wholesale_value || '')} onChange={e => handlePropertyChange('wholesale_value', e.target.value)} />
                   </div>
                 </div>
               </div>
@@ -244,39 +230,38 @@ const LeadModal: React.FC<LeadModalProps> = ({
               <Divider />
 
               {/* Contact Info Section */}
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-gray-500 dark:text-gray-400 uppercase tracking-widest text-sm font-bold">Contact Info</h2>
-                  <Button size="sm" variant="flat" onPress={addContact} startContent={<Icon icon="lucide:plus" className="w-4 h-4" />}>
-                    Add Contact
-                  </Button>
-                </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {contacts.map((c, i) => (
-                    <div key={i} className="space-y-4 p-4 border border-slate-300 dark:border-slate-700 rounded-lg relative">
-                      <Button isIconOnly variant="light" size="sm" className="!absolute top-1 right-1 h-8 w-8 p-0" onPress={() => removeContact(i)}>
-                        <Icon icon="lucide:x" className="w-4 h-4 text-default-500" />
-                      </Button>
+              <h2 className="text-gray-500 dark:text-gray-400 uppercase tracking-widest text-sm font-bold">Contact Info</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-8">
+                {contacts.slice(0, 2).map((c, i) => (
+                    <div key={i} className="space-y-6 relative">
+                       {i > 0 && (
+                         <Button isIconOnly variant="light" size="sm" className="!absolute -top-4 right-0 h-8 w-8 p-0" onPress={() => removeContact(i)}>
+                           <Icon icon="lucide:x" className="w-4 h-4 text-default-500" />
+                         </Button>
+                       )}
                       <FloatingLabelInput label="Contact Name" value={c.name || ''} onChange={e => handleContactChange(i, 'name', e.target.value)} />
                       <FloatingLabelInput label="Email" type="email" value={c.email || ''} onChange={e => handleContactChange(i, 'email', e.target.value)} />
-                      <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
-                        <FloatingLabelInput label="Phone" value={c.phone || ''} onChange={e => handleContactChange(i, 'phone', e.target.value)} className="w-full" />
-                        <FloatingLabelSelect label="Role" value={c.role || ''} onChange={(e) => handleContactSelectChange(e, i, 'role')} className="w-full">
+                      <div className="grid grid-cols-2 gap-4">
+                        <FloatingLabelInput label="Phone" value={c.phone || ''} onChange={e => handleContactChange(i, 'phone', e.target.value)} />
+                        <FloatingLabelSelect label="Role" value={c.role || ''} onChange={(e) => handleContactSelectChange(e, i, 'role')}>
                            {(CONTACT_ROLE_OPTIONS as (string | null)[]).map(role => <option key={role || 'none'} value={role || ''}>{role}</option>)}
                         </FloatingLabelSelect>
                       </div>
                     </div>
-                  ))}
-                </div>
+                ))}
               </div>
+               {contacts.length < 2 && (
+                  <Button size="sm" variant="flat" onPress={addContact} startContent={<Icon icon="lucide:plus" className="w-4 h-4" />}>
+                    Add Another Contact
+                  </Button>
+                )}
+
 
               <Divider />
 
               {/* Notes Section */}
-              <div>
-                <h2 className="text-gray-500 dark:text-gray-400 uppercase tracking-widest text-sm font-bold mb-4">Notes</h2>
-                <FloatingLabelTextarea label="Notes" rows={6} value={property.notes || ''} onChange={e => handlePropertyChange('notes', e.target.value)} />
-              </div>
+              <h2 className="text-gray-500 dark:text-gray-400 uppercase tracking-widest text-sm font-bold">Notes</h2>
+              <FloatingLabelTextarea label="Notes" rows={8} value={property.notes || ''} onChange={e => handlePropertyChange('notes', e.target.value)} />
 
             </div>
           )}
