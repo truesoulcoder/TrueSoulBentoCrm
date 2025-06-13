@@ -226,13 +226,15 @@ export const LeadsTable: React.FC = () => {
     const url = isNewLead ? '/api/leads' : `/api/leads/${selectedPropertyId}`;
     const method = isNewLead ? 'POST' : 'PUT';
 
-    const { contactsArray, ...propertyData } = currentEditingLead;
-    
-    // Remove property_id from payload if it's a new lead and property_id is null or empty
-    // to prevent sending a null property_id to the backend if it's an auto-incrementing PK.
-    const payloadPropertyData = { ...propertyData };
-    if (isNewLead && !payloadPropertyData.property_id) {
-      delete payloadPropertyData.property_id;
+    const { contactsArray, ...propertyDataFromLead } = currentEditingLead; // Renamed to avoid confusion
+
+    let payloadPropertyData: Omit<typeof propertyDataFromLead, 'property_id'> & { property_id?: string | null };
+
+    if (isNewLead && !propertyDataFromLead.property_id) {
+      const { property_id, ...rest } = propertyDataFromLead;
+      payloadPropertyData = rest;
+    } else {
+      payloadPropertyData = { ...propertyDataFromLead };
     }
 
     const payload = {
