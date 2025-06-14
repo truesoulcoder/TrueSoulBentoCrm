@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, Slider } from "@heroui/react";
 import toast from 'react-hot-toast';
-import { useSupabase } from '@/lib/supabase/client'; // Assuming a client hook/provider might exist, else use createClient
+import { createClient } from '@/lib/supabase/client'; // Assuming a client hook/provider might exist, else use createClient
 
 type MarketRegion = {
   id: string;
@@ -15,20 +15,27 @@ type MarketRegion = {
 interface CreateCampaignModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void; // Callback to re-fetch campaigns list
+  onSuccess: () => void;
+  dailyLimit: number;
+  timeWindowHours: number;
 }
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
-export const CreateCampaignModal: React.FC<CreateCampaignModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const [name, setName] = useState('');
+export const CreateCampaignModal: React.FC<CreateCampaignModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+
+}) => {
+  const [name, setName] = useState<string>('');
   const [marketRegionId, setMarketRegionId] = useState<string>('');
-  const [dailyLimit, setDailyLimit] = useState<number>(100);
-  const [timeWindowHours, setTimeWindowHours] = useState<number>(8);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dailyLimit, setDailyLimit] = useState<number>(0);
+  const [timeWindowHours, setTimeWindowHours] = useState<number>(0);
   
-  const supabase = useSupabase(); // Or create a client instance
+  const supabase = createClient(); // Or create a client instance
 
   const { data: marketRegions } = useSWR<MarketRegion[]>('/api/market-regions', fetcher);
 
@@ -37,9 +44,9 @@ export const CreateCampaignModal: React.FC<CreateCampaignModalProps> = ({ isOpen
     if (isOpen) {
       setName('');
       setMarketRegionId('');
-      setDailyLimit(100);
-      setTimeWindowHours(8);
       setError(null);
+      setDailyLimit(0);
+      setTimeWindowHours(0);
     }
   }, [isOpen]);
 
@@ -105,11 +112,11 @@ export const CreateCampaignModal: React.FC<CreateCampaignModalProps> = ({ isOpen
             onChange={(e) => setMarketRegionId(e.target.value)}
             isRequired
           >
-            {(marketRegions || []).map((region) => (
-              <SelectItem key={region.id} value={region.id}>
-                {region.name}
-              </SelectItem>
-            ))}
+          {(marketRegions || []).map((region) => (
+            <SelectItem key={region.id}>
+              {region.name}
+            </SelectItem>
+          ))}
           </Select>
           <Slider
             label={`Daily Send Limit: ${dailyLimit}`}

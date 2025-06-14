@@ -1,3 +1,4 @@
+// src/app/layout.tsx
 "use client"
 import { Providers } from './providers'
 import './globals.css'
@@ -9,6 +10,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
+      <head>
+        <link id="favicon" rel="icon" href="/favicon-light.svg" type="image/svg+xml" />
+      </head>
       <body className="h-full">
         <Providers>
           <div className="min-h-full">

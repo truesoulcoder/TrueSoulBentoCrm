@@ -3,14 +3,14 @@
 
 import React, { useState, useCallback } from 'react';
 import useSWR from 'swr';
-import { Card, CardHeader, CardBody, Button, Select, SelectItem, Progress, Chip } from "@heroui/react";
+import { Card, CardHeader, CardBody, Button, Select, SelectItem, Progress, Chip, useDisclosure } from "@heroui/react";
 import { Icon } from '@iconify/react';
 import toast from 'react-hot-toast';
+import { CreateCampaignModal } from './create-campaign-modal';
 
 // Re-usable fetcher for useSWR
 const fetcher = (url: string) => fetch(url).then(res => {
   if (!res.ok) {
-    // For 4xx/5xx errors, parse the JSON body for a more specific message
     return res.json().then(errorBody => {
       throw new Error(errorBody.error || 'An error occurred while fetching data.');
     });
@@ -35,17 +35,20 @@ type MarketRegion = {
 type Campaign = {
   id: string;
   name: string;
+  market_region_id: string; // Add this to align with schema
 };
 
 export const CampaignEngineManager: React.FC = () => {
-  const [selectedCampaign, setSelectedCampaign] = useState<string>('');
-  const [selectedRegion, setSelectedRegion] = useState<string>('');
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch all necessary data using SWR for automatic re-fetching and caching
+  const { isOpen, onOpen, onClose } = useDisclosure(); // Hook for modal state
+
+  // Fetch all necessary data using SWR
   const { data: engineState, mutate: mutateEngineState } = useSWR<EngineState>('/api/engine/control', fetcher, { refreshInterval: 5000 });
-  const { data: campaigns } = useSWR<Campaign[]>('/api/campaigns', fetcher);
-  const { data: marketRegions, error: marketRegionsError } = useSWR<MarketRegion[]>('/api/market-regions', fetcher);
+  const { data: campaigns, mutate: mutateCampaigns } = useSWR<Campaign[]>('/api/campaigns', fetcher);
+  
+  const selectedCampaign = campaigns?.find(c => c.id === selectedCampaignId);
 
   const handleStateChange = useCallback(async (status: 'running' | 'paused' | 'stopped') => {
     setIsSubmitting(true);
@@ -53,24 +56,19 @@ export const CampaignEngineManager: React.FC = () => {
 
     const body: { status: string; campaign_id?: string } = { status };
 
-    // A campaign_id is required to resume from pause to adjust schedules
     if (status === 'running' && engineState?.status === 'paused') {
-      if (!selectedCampaign) {
+      if (!selectedCampaignId) {
         toast.error('Please select the campaign you wish to resume.', { id: toastId });
         setIsSubmitting(false);
         return;
       }
-      body.campaign_id = selectedCampaign;
+      body.campaign_id = selectedCampaignId;
     }
 
     try {
       const res = await fetch('/api/engine/control', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          // Assuming this is called from an authorized user session,
-          // for service-to-service, an API key might be better.
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
@@ -85,24 +83,24 @@ export const CampaignEngineManager: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [selectedCampaign, engineState, mutateEngineState]);
+  }, [selectedCampaignId, engineState, mutateEngineState]);
 
   const handleScheduleCampaign = useCallback(async () => {
-    if (!selectedCampaign || !selectedRegion) {
-      toast.error('Please select a campaign and a market region to schedule.');
+    if (!selectedCampaign) {
+      toast.error('Please select a campaign to schedule.');
       return;
     }
 
     setIsSubmitting(true);
-    const toastId = toast.loading(`Scheduling jobs for campaign...`);
+    const toastId = toast.loading(`Scheduling jobs for "${selectedCampaign.name}"...`);
 
     try {
       const res = await fetch('/api/engine/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          campaign_id: selectedCampaign,
-          market_region_id: selectedRegion,
+          campaign_id: selectedCampaign.id,
+          market_region_id: selectedCampaign.market_region_id,
         }),
       });
 
@@ -117,7 +115,7 @@ export const CampaignEngineManager: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [selectedCampaign, selectedRegion]);
+  }, [selectedCampaign]);
 
   const getStatusChip = () => {
     if (!engineState) return <Chip color="default" variant="flat">Loading...</Chip>;
@@ -134,85 +132,85 @@ export const CampaignEngineManager: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full p-2 space-y-4">
-        {!engineState && <Progress isIndeterminate size="sm" aria-label="Loading engine status..." />}
-        <div className="flex justify-between items-center">
-            <h3 className="text-sm font-medium">Master Control</h3>
-            {getStatusChip()}
-        </div>
-        
-        <Select
-            label="Select Campaign"
-            placeholder="Choose a campaign"
-            selectedKeys={selectedCampaign ? [selectedCampaign] : []}
-            onChange={(e) => setSelectedCampaign(e.target.value)}
-            aria-label="Select Campaign"
-            disabled={isSubmitting}
-        >
-            {(campaigns || []).map((campaign) => (
-                <SelectItem key={campaign.id} value={campaign.id}>
-                    {campaign.name}
-                </SelectItem>
-            ))}
-        </Select>
+    <>
+      <div className="flex flex-col h-full p-2 space-y-4">
+          <div className="flex justify-between items-center">
+              <h3 className="text-sm font-medium">Master Control</h3>
+              {getStatusChip()}
+          </div>
 
-        <Select
-            label="Select Market Region"
-            placeholder="Choose a region to target"
-            selectedKeys={selectedRegion ? [selectedRegion] : []}
-            onChange={(e) => setSelectedRegion(e.target.value)}
-            aria-label="Select Market Region"
-            disabled={isSubmitting || !!marketRegionsError}
-        >
-            {(marketRegions || []).map((region) => (
-                <SelectItem key={region.id} value={region.id}>
-                    {region.name}
-                </SelectItem>
-            ))}
-        </Select>
+          <div className="flex items-center gap-2">
+            <Select
+                label="Select Campaign"
+                placeholder="Choose a campaign"
+                selectedKeys={selectedCampaignId ? [selectedCampaignId] : []}
+                onChange={(e) => setSelectedCampaignId(e.target.value)}
+                aria-label="Select Campaign"
+                disabled={isSubmitting}
+                className="flex-grow"
+            >
+                {(campaigns || []).map((campaign) => (
+                    <SelectItem key={campaign.id}>
+                        {campaign.name}
+                    </SelectItem>
+                ))}
+            </Select>
+            <Button isIconOnly variant="flat" onPress={onOpen} aria-label="Create new campaign">
+                <Icon icon="lucide:plus" />
+            </Button>
+          </div>
+          
+          <div className="pt-2 border-t border-divider">
+              <Button
+                  fullWidth
+                  color="secondary"
+                  variant="solid"
+                  onPress={handleScheduleCampaign}
+                  isDisabled={isSubmitting || !selectedCampaignId}
+                  startContent={!isSubmitting && <Icon icon="lucide:calendar-plus" />}
+              >
+                  Schedule Selected Campaign
+              </Button>
+          </div>
 
-        <div className="pt-2 border-t border-divider">
-            <Button
-                fullWidth
-                color="secondary"
-                variant="solid"
-                onPress={handleScheduleCampaign}
-                isDisabled={isSubmitting || !selectedCampaign || !selectedRegion}
-                startContent={!isSubmitting && <Icon icon="lucide:calendar-plus" />}
-            >
-                Schedule Campaign Jobs
-            </Button>
-        </div>
-
-        <div className="pt-2 border-t border-divider grid grid-cols-2 gap-2">
-             <Button 
-                color="primary"
-                onPress={() => handleStateChange('running')}
-                isDisabled={isSubmitting || engineState?.status === 'running'}
-                startContent={!isSubmitting && <Icon icon="lucide:play" />}
-            >
-                {engineState?.status === 'paused' ? 'Resume' : 'Start'}
-            </Button>
-            <Button 
-                color="warning"
-                variant="flat"
-                onPress={() => handleStateChange('paused')}
-                isDisabled={isSubmitting || engineState?.status !== 'running'}
-                startContent={!isSubmitting && <Icon icon="lucide:pause" />}
-            >
-                Pause
-            </Button>
-        </div>
-         <Button 
-            color="danger"
-            variant="flat"
-            fullWidth
-            onPress={() => handleStateChange('stopped')}
-            isDisabled={isSubmitting || engineState?.status === 'stopped'}
-            startContent={!isSubmitting && <Icon icon="lucide:square" />}
-        >
-            Stop Engine
-        </Button>
-    </div>
+          <div className="pt-2 border-t border-divider grid grid-cols-2 gap-2">
+              <Button 
+                  color="primary"
+                  onPress={() => handleStateChange('running')}
+                  isDisabled={isSubmitting || engineState?.status === 'running'}
+                  startContent={!isSubmitting && <Icon icon="lucide:play" />}
+              >
+                  {engineState?.status === 'paused' ? 'Resume' : 'Start'}
+              </Button>
+              <Button 
+                  color="warning"
+                  variant="flat"
+                  onPress={() => handleStateChange('paused')}
+                  isDisabled={isSubmitting || engineState?.status !== 'running'}
+                  startContent={!isSubmitting && <Icon icon="lucide:pause" />}
+              >
+                  Pause
+              </Button>
+          </div>
+          <Button 
+              color="danger"
+              variant="flat"
+              fullWidth
+              onPress={() => handleStateChange('stopped')}
+              isDisabled={isSubmitting || engineState?.status === 'stopped'}
+              startContent={!isSubmitting && <Icon icon="lucide:square" />}
+          >
+              Stop Engine
+          </Button>
+      </div>
+      
+      <CreateCampaignModal 
+        isOpen={isOpen}
+        onClose={onClose}
+        onSuccess={() => {
+          mutateCampaigns();
+          onClose();
+        } } dailyLimit={0} timeWindowHours={0}      />
+    </>
   );
 };
