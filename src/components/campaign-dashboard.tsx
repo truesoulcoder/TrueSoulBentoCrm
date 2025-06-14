@@ -1,3 +1,4 @@
+// src/components/campaign-dashboard.tsx
 import * as React from "react";
 import { Icon } from "@iconify/react";
 import {
@@ -66,7 +67,7 @@ const CampaignDashboard: FC<CampaignDashboardProps> = () => {
   ] as const;
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="w-[90%] mx-auto">
       <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Campaign Dashboard</h1>
