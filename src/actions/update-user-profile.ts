@@ -2,11 +2,10 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
 
 export async function updateUserProfile() {
   try {
-    // FIX: Await the createClient() function since it is now async.
+    // FIX: createClient is an async function and must be awaited.
     const supabase = await createClient();
 
     // Get the current user
