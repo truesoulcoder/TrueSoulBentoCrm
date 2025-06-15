@@ -9,18 +9,21 @@ const CACHE_KEY = 'market_regions:active';
 const CACHE_TTL_SECONDS = 600; // Cache for 10 minutes
 
 export async function GET() {
+  // Resilient Caching Block
   try {
-    // 1. Check Redis cache first
     const cachedData = await redis.get(CACHE_KEY);
     if (cachedData) {
       console.log(`[CACHE HIT] Serving from cache: ${CACHE_KEY}`);
-      // The data in Redis is a string, so we need to parse it back to JSON
       return NextResponse.json(JSON.parse(cachedData));
     }
+  } catch (cacheError) {
+    console.error(`[MARKET_REGIONS CACHE READ ERROR] Could not read from cache. Falling back to DB.`, cacheError);
+  }
+  
+  // --- Database as the Source of Truth ---
+  console.log(`[CACHE MISS] Fetching from database: ${CACHE_KEY}`);
 
-    console.log(`[CACHE MISS] Fetching from database: ${CACHE_KEY}`);
-    
-    // 2. If it's a cache miss, query the database
+  try {
     const supabase = await createAdminServerClient();
     const { data, error } = await supabase
       .from('active_market_regions')
@@ -30,11 +33,16 @@ export async function GET() {
     if (error) {
       throw new Error(error.message);
     }
-
-    // 3. Store the fresh data in Redis with a Time-To-Live (TTL)
-    // The 'EX' option sets the expiration in seconds.
-    await redis.set(CACHE_KEY, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
-    console.log(`[CACHE SET] Stored data for key: ${CACHE_KEY}`);
+    
+    // Attempt to set cache, but don't let it fail the request
+    try {
+      if(data) {
+        await redis.set(CACHE_KEY, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
+        console.log(`[CACHE SET] Stored data for key: ${CACHE_KEY}`);
+      }
+    } catch (cacheError) {
+        console.error(`[MARKET_REGIONS CACHE WRITE ERROR] Could not write to cache.`, cacheError);
+    }
 
     return NextResponse.json(data);
 

@@ -25,9 +25,13 @@ async function handleRequest(
         .single();
       if (error) throw error;
       
-      // Invalidate the cache on successful update
-      await redis.del(CACHE_KEY_TO_INVALIDATE);
-      console.log(`[CACHE INVALIDATION] Deleted key: ${CACHE_KEY_TO_INVALIDATE}`);
+      // Resiliently invalidate the cache
+      try {
+        await redis.del(CACHE_KEY_TO_INVALIDATE);
+        console.log(`[CACHE INVALIDATION] Deleted key: ${CACHE_KEY_TO_INVALIDATE}`);
+      } catch (cacheError) {
+        console.error(`[CAMPAIGN CACHE INVALIDATION ERROR] Could not delete cache key on PUT.`, cacheError);
+      }
 
       return NextResponse.json(data);
     }
@@ -39,10 +43,14 @@ async function handleRequest(
         .eq('id', campaignId);
       if (error) throw error;
 
-      // Invalidate the cache on successful delete
-      await redis.del(CACHE_KEY_TO_INVALIDATE);
-      console.log(`[CACHE INVALIDATION] Deleted key: ${CACHE_KEY_TO_INVALIDATE}`);
-
+      // Resiliently invalidate the cache
+      try {
+        await redis.del(CACHE_KEY_TO_INVALIDATE);
+        console.log(`[CACHE INVALIDATION] Deleted key: ${CACHE_KEY_TO_INVALIDATE}`);
+      } catch (cacheError) {
+        console.error(`[CAMPAIGN CACHE INVALIDATION ERROR] Could not delete cache key on DELETE.`, cacheError);
+      }
+      
       return new Response(null, { status: 204 });
     }
 

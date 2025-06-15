@@ -10,17 +10,20 @@ const CACHE_KEY = 'campaigns:all';
 const CACHE_TTL_SECONDS = 600; // Cache for 10 minutes
 
 export async function GET() {
+  // Resilient Caching Block
   try {
-    // 1. Check Redis cache first
     const cachedData = await redis.get(CACHE_KEY);
     if (cachedData) {
       console.log(`[CACHE HIT] Serving from cache: ${CACHE_KEY}`);
       return NextResponse.json(JSON.parse(cachedData));
     }
+  } catch (cacheError) {
+      console.error(`[CAMPAIGNS CACHE READ ERROR] Could not read from cache. Falling back to DB.`, cacheError);
+  }
 
-    console.log(`[CACHE MISS] Fetching from database: ${CACHE_KEY}`);
-    
-    // 2. If it's a cache miss, query the database
+  // --- Database as the Source of Truth ---
+  console.log(`[CACHE MISS] Fetching from database: ${CACHE_KEY}`);
+  try {
     const supabase = await createAdminServerClient();
     const { data, error } = await supabase
       .from('campaigns')
@@ -35,10 +38,14 @@ export async function GET() {
       );
     }
     
-    // 3. Store the fresh data in Redis
-    if (data) {
-        await redis.set(CACHE_KEY, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
-        console.log(`[CACHE SET] Stored data for key: ${CACHE_KEY}`);
+    // Attempt to set cache, but don't let it fail the request
+    try {
+        if (data) {
+            await redis.set(CACHE_KEY, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
+            console.log(`[CACHE SET] Stored data for key: ${CACHE_KEY}`);
+        }
+    } catch (cacheError) {
+        console.error(`[CAMPAIGNS CACHE WRITE ERROR] Could not write to cache.`, cacheError);
     }
 
     return NextResponse.json(data);
@@ -83,9 +90,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // 4. Invalidate the cache after a successful write
-    console.log(`[CACHE INVALIDATION] Deleting key: ${CACHE_KEY}`);
-    await redis.del(CACHE_KEY);
+    // Invalidate cache, but don't let it fail the request
+    try {
+        console.log(`[CACHE INVALIDATION] Deleting key: ${CACHE_KEY}`);
+        await redis.del(CACHE_KEY);
+    } catch (cacheError) {
+        console.error(`[CAMPAIGNS CACHE INVALIDATION ERROR] Could not delete cache key.`, cacheError);
+    }
 
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {

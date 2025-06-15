@@ -157,12 +157,16 @@ export async function saveLead(leadData: {
       if (!newlyCreatedProperty) {
         throw new Error('Property creation reported successful, but no data was returned.');
       }
-      propertyIdForInvalidation = newlyCreatedProperty.property_id; // use the already non-null object
-      savedProperty = newlyCreatedProperty; // assign afterwards; compiler knows it's non-null
+      savedProperty = newlyCreatedProperty; // Now newlyCreatedProperty is known to be non-null
     }
 
     if (!savedProperty) {
       throw new Error("Failed to get property ID after save.");
+    }
+
+    // Ensure we have a property ID for cache invalidation after the null check
+    if (!propertyIdForInvalidation) {
+      propertyIdForInvalidation = savedProperty.property_id;
     }
     
     // De-structure after the null check to satisfy TypeScript's control flow analysis
