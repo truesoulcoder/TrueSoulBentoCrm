@@ -1,8 +1,11 @@
 // src/app/api/campaigns/[id]/route.ts
 import { createAdminServerClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import redis from '@/lib/redis';
 
 export const dynamic = 'force-dynamic';
+
+const CACHE_KEY_TO_INVALIDATE = 'campaigns:all';
 
 async function handleRequest(
   request: Request,
@@ -21,6 +24,11 @@ async function handleRequest(
         .select()
         .single();
       if (error) throw error;
+      
+      // Invalidate the cache on successful update
+      await redis.del(CACHE_KEY_TO_INVALIDATE);
+      console.log(`[CACHE INVALIDATION] Deleted key: ${CACHE_KEY_TO_INVALIDATE}`);
+
       return NextResponse.json(data);
     }
 
@@ -30,6 +38,11 @@ async function handleRequest(
         .delete()
         .eq('id', campaignId);
       if (error) throw error;
+
+      // Invalidate the cache on successful delete
+      await redis.del(CACHE_KEY_TO_INVALIDATE);
+      console.log(`[CACHE INVALIDATION] Deleted key: ${CACHE_KEY_TO_INVALIDATE}`);
+
       return new Response(null, { status: 204 });
     }
 

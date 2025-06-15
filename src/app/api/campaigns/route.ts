@@ -2,12 +2,26 @@
 import { createAdminServerClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import type { Database } from '@/types/supabase';
+import redis from '@/lib/redis';
 
 export const dynamic = 'force-dynamic';
 
+const CACHE_KEY = 'campaigns:all';
+const CACHE_TTL_SECONDS = 600; // Cache for 10 minutes
+
 export async function GET() {
-  const supabase = await createAdminServerClient();
   try {
+    // 1. Check Redis cache first
+    const cachedData = await redis.get(CACHE_KEY);
+    if (cachedData) {
+      console.log(`[CACHE HIT] Serving from cache: ${CACHE_KEY}`);
+      return NextResponse.json(JSON.parse(cachedData));
+    }
+
+    console.log(`[CACHE MISS] Fetching from database: ${CACHE_KEY}`);
+    
+    // 2. If it's a cache miss, query the database
+    const supabase = await createAdminServerClient();
     const { data, error } = await supabase
       .from('campaigns')
       .select('*')
@@ -20,6 +34,13 @@ export async function GET() {
         { status: 500 }
       );
     }
+    
+    // 3. Store the fresh data in Redis
+    if (data) {
+        await redis.set(CACHE_KEY, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
+        console.log(`[CACHE SET] Stored data for key: ${CACHE_KEY}`);
+    }
+
     return NextResponse.json(data);
   } catch (error) {
     const errorMessage =
@@ -34,7 +55,6 @@ export async function POST(request: Request) {
     const campaignData = await request.json();
     const { name, status, user_id, market_region_id, daily_limit, time_window_hours } = campaignData;
 
-    // Validate required fields
     if (!name || !user_id || !market_region_id) {
       return NextResponse.json(
         { error: 'name, user_id, and market_region_id are required.' },
@@ -62,6 +82,10 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
+
+    // 4. Invalidate the cache after a successful write
+    console.log(`[CACHE INVALIDATION] Deleting key: ${CACHE_KEY}`);
+    await redis.del(CACHE_KEY);
 
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {

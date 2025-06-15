@@ -16,20 +16,31 @@ export type LeadDetails = {
 };
 
 /**
- * Helper function to clear all relevant lead and region caches from Redis.
+ * Helper function to clear relevant caches from Redis.
+ * It clears the general leads and regions lists, and optionally a specific lead's detail cache.
+ * @param propertyId - Optional ID of a specific lead to invalidate.
  */
-async function invalidateLeadCaches() {
+async function invalidateLeadCaches(propertyId?: string) {
   try {
-    // Find all cache keys related to the leads API
-    const leadCacheKeys = await redis.keys('leads:*');
-    // Also find the market regions cache key
-    const regionCacheKeys = await redis.keys('market_regions:*');
+    const keysToDel: string[] = [];
 
-    const allKeys = [...leadCacheKeys, ...regionCacheKeys];
+    // Invalidate a specific lead's detail cache if an ID is provided
+    if (propertyId) {
+      keysToDel.push(`lead:details:${propertyId}`);
+    }
+
+    // Find and add all list-based cache keys to the deletion list
+    const leadListKeys = await redis.keys('leads:*');
+    const regionListKeys = await redis.keys('market_regions:*');
+
+    const allKeys = [...keysToDel, ...leadListKeys, ...regionListKeys];
     
-    if (allKeys.length > 0) {
-      console.log('[CACHE INVALIDATION] Deleting keys:', allKeys);
-      await redis.del(allKeys);
+    // Use a Set to ensure we only delete unique keys
+    const uniqueKeys = [...new Set(allKeys)];
+
+    if (uniqueKeys.length > 0) {
+      console.log('[CACHE INVALIDATION] Deleting keys:', uniqueKeys);
+      await redis.del(uniqueKeys);
     }
   } catch (error) {
     console.error('Failed to invalidate Redis cache:', error);
@@ -38,35 +49,59 @@ async function invalidateLeadCaches() {
 
 /**
  * Fetches the full details for a single lead, including its property and associated contacts.
+ * Uses Redis for caching.
  * @param propertyId The UUID of the property to fetch.
  * @returns An object containing the property and an array of contacts.
  */
 export async function getLeadDetails(propertyId: string): Promise<LeadDetails | null> {
-  const supabase = await createAdminServerClient();
+  const cacheKey = `lead:details:${propertyId}`;
+  const CACHE_TTL_SECONDS = 3600; // Cache individual leads for 1 hour
 
-  const { data: property, error: propertyError } = await supabase
-    .from('properties')
-    .select('*')
-    .eq('property_id', propertyId)
-    .single();
+  try {
+    const cachedData = await redis.get(cacheKey);
+    if (cachedData) {
+      console.log(`[CACHE HIT] Serving from cache: ${cacheKey}`);
+      return JSON.parse(cachedData);
+    }
 
-  if (propertyError) {
-    console.error(`Error fetching property ${propertyId}:`, propertyError);
+    console.log(`[CACHE MISS] Fetching from database: ${cacheKey}`);
+    const supabase = await createAdminServerClient();
+
+    const { data: property, error: propertyError } = await supabase
+      .from('properties')
+      .select('*')
+      .eq('property_id', propertyId)
+      .single();
+
+    if (propertyError) {
+      console.error(`Error fetching property ${propertyId}:`, propertyError);
+      return null;
+    }
+
+    const { data: contacts, error: contactsError } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('property_id', propertyId)
+      .order('created_at');
+
+    if (contactsError) {
+      console.error(`Error fetching contacts for property ${propertyId}:`, contactsError);
+      // Return property even if contacts fail, but don't cache
+      return { property, contacts: [] };
+    }
+    
+    const leadDetails = { property, contacts: contacts || [] };
+
+    // Store the fresh data in Redis
+    await redis.set(cacheKey, JSON.stringify(leadDetails), 'EX', CACHE_TTL_SECONDS);
+    console.log(`[CACHE SET] Stored data for key: ${cacheKey}`);
+    
+    return leadDetails;
+
+  } catch (error) {
+    console.error(`Error in getLeadDetails for ID ${propertyId}:`, error);
     return null;
   }
-
-  const { data: contacts, error: contactsError } = await supabase
-    .from('contacts')
-    .select('*')
-    .eq('property_id', propertyId)
-    .order('created_at');
-
-  if (contactsError) {
-    console.error(`Error fetching contacts for property ${propertyId}:`, contactsError);
-    return { property, contacts: [] };
-  }
-
-  return { property, contacts: contacts || [] };
 }
 
 /**
@@ -80,11 +115,13 @@ export async function saveLead(leadData: {
 }): Promise<{ data: Property | null, error: string | null }> {
   const supabase = await createAdminServerClient();
   const { property, contacts } = leadData;
+  let propertyIdForInvalidation: string | undefined;
 
   try {
     let savedProperty: Property | null = null;
 
     if (property.property_id) {
+      propertyIdForInvalidation = property.property_id;
       // --- UPDATE ---
       const { data, error } = await supabase
         .from('properties')
@@ -107,23 +144,35 @@ export async function saveLead(leadData: {
         user_id: user.id,
       };
 
-      const { data, error } = await supabase
+      const { data: newlyCreatedProperty, error } = await supabase
         .from('properties')
         .insert(propertyToInsert)
         .select()
         .single();
 
-      if (error) throw new Error(`Failed to create property: ${error.message}`);
-      savedProperty = data;
+      if (error) {
+        throw new Error(`Failed to create property: ${error.message}`);
+      }
+      // Add this check to ensure newlyCreatedProperty is not null
+      if (!newlyCreatedProperty) {
+        throw new Error('Property creation reported successful, but no data was returned.');
+      }
+      propertyIdForInvalidation = newlyCreatedProperty.property_id; // use the already non-null object
+      savedProperty = newlyCreatedProperty; // assign afterwards; compiler knows it's non-null
     }
 
-    if (!savedProperty) throw new Error("Failed to get property ID after save.");
+    if (!savedProperty) {
+      throw new Error("Failed to get property ID after save.");
+    }
     
+    // De-structure after the null check to satisfy TypeScript's control flow analysis
+    const { property_id: finalPropertyId, user_id: finalUserId } = savedProperty;
+
     // --- UPSERT CONTACTS ---
     const contactIdsToKeep: string[] = [];
     const contactsToUpsert = contacts.map(c => {
       if (c.contact_id) contactIdsToKeep.push(c.contact_id);
-      return { ...c, property_id: savedProperty!.property_id, user_id: savedProperty!.user_id };
+      return { ...c, property_id: finalPropertyId, user_id: finalUserId };
     });
 
     if (contactsToUpsert.length > 0) {
@@ -134,20 +183,19 @@ export async function saveLead(leadData: {
         if (upsertError) throw new Error(`Failed to upsert contacts: ${upsertError.message}`);
     }
     
-    // --- DELETE REMOVED CONTACTS ---
-    const { error: deleteError } = await supabase
-      .from('contacts')
-      .delete()
-      .eq('property_id', savedProperty.property_id)
-      .not('contact_id', 'in', `(${contactIdsToKeep.join(',')})`);
-  
-    if (deleteError && contactIdsToKeep.length > 0) {
-        console.warn(`Could not delete removed contacts for property ${savedProperty.property_id}: ${deleteError.message}`);
+    if (contactIdsToKeep.length > 0) {
+        const { error: deleteError } = await supabase
+          .from('contacts')
+          .delete()
+          .eq('property_id', savedProperty.property_id)
+          .not('contact_id', 'in', `(${contactIdsToKeep.join(',')})`);
+      
+        if (deleteError) {
+            console.warn(`Could not delete removed contacts for property ${savedProperty.property_id}: ${deleteError.message}`);
+        }
     }
 
-    // After a successful database operation, invalidate the cache
-    await invalidateLeadCaches();
-
+    await invalidateLeadCaches(propertyIdForInvalidation);
     revalidatePath('/');
     return { data: savedProperty, error: null };
 
@@ -169,9 +217,7 @@ export async function deleteLead(propertyId: string): Promise<{ success: boolean
     await supabase.from('contacts').delete().eq('property_id', propertyId);
     await supabase.from('properties').delete().eq('property_id', propertyId);
 
-    // After a successful database operation, invalidate the cache
-    await invalidateLeadCaches();
-
+    await invalidateLeadCaches(propertyId);
     revalidatePath('/');
     return { success: true, error: null };
   } catch (e: any) {
