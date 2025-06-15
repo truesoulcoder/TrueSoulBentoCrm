@@ -20,12 +20,15 @@ import {
   Spinner,
   useDisclosure,
   Input,
-  Modal
+  Modal,
+  Select, 
+  SelectItem
 } from "@heroui/react";
 import type { Database } from "@/types/supabase";
 import LeadModal from "./lead-modal";
 
 type LeadData = Database['public']['Views']['properties_with_contacts']['Row'];
+type MarketRegion = { id: string; name: string };
 
 const fetcher = (url: string) => fetch(url).then(res => {
   if (!res.ok) {
@@ -73,11 +76,14 @@ const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "wa
 export const LeadsTable: React.FC = () => {
   const [filterValue, setFilterValue] = React.useState("");
   const [debouncedFilterValue, setDebouncedFilterValue] = React.useState("");
+  const [regionFilter, setRegionFilter] = React.useState("all");
 
   const { data: leads, error, isLoading, mutate } = useSWR<LeadData[]>(
-    `/api/leads?search=${debouncedFilterValue}`,
+    `/api/leads?search=${debouncedFilterValue}&region=${regionFilter}`,
     fetcher
   );
+
+  const { data: marketRegions, isLoading: isLoadingRegions } = useSWR<MarketRegion[]>('/api/market-regions', fetcher);
 
   React.useEffect(() => {
     const handler = setTimeout(() => {
@@ -126,6 +132,34 @@ export const LeadsTable: React.FC = () => {
     setFilterValue(value || "");
     setPage(1);
   }, []);
+  
+  // Define the Selection type to match NextUI/HeroUI's typical signature for onSelectionChange callbacks
+  type ComponentSelection = Set<React.Key> | "all";
+
+  const onRegionChange = React.useCallback((keys: ComponentSelection) => {
+    let newRegionFilter = "all"; // Default to "all"
+
+    if (keys instanceof Set) {
+      // This is the expected path for a single-select Select.
+      // `keys` will be a Set containing the key of the selected item,
+      // e.g., new Set(["all"]) for the "All Regions" item, or new Set(["someRegionName"]).
+      // Or an empty Set if the selection is cleared (if the Select component allows this).
+      if (keys.size > 0) {
+        const selectedKey = Array.from(keys)[0]; // Get the first (and only) key from the Set
+        newRegionFilter = String(selectedKey);
+      }
+      // If keys.size is 0 (selection cleared), newRegionFilter remains "all" (our chosen default).
+    } else if (typeof keys === 'string' && keys === 'all') {
+      // This branch handles the literal 'all' string case from the ComponentSelection type.
+      // For this specific single-select Select component where "all" is an item key,
+      // this path is less likely to be taken (it would receive new Set(["all"]) instead).
+      // Including this handles the type definition exhaustively.
+      newRegionFilter = "all";
+    }
+
+    setRegionFilter(newRegionFilter);
+    setPage(1); // Reset page when the filter changes
+  }, [setRegionFilter, setPage]);
 
   const onClear = React.useCallback(() => {
     setFilterValue("");
@@ -199,15 +233,34 @@ export const LeadsTable: React.FC = () => {
     return (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col md:flex-row justify-between gap-3 md:items-end">
-          <Input
-            isClearable
-            className="w-full md:max-w-[44%]"
-            placeholder="Search all leads..."
-            startContent={<Icon icon="lucide:search" />}
-            value={filterValue}
-            onClear={onClear}
-            onValueChange={onSearchChange}
-          />
+          <div className="flex flex-col md:flex-row gap-3 w-full">
+            <Input
+              isClearable
+              className="w-full md:max-w-md"
+              placeholder="Search all leads..."
+              startContent={<Icon icon="lucide:search" />}
+              value={filterValue}
+              onClear={onClear}
+              onValueChange={onSearchChange}
+            />
+            <Select
+              aria-label="Market region filter"
+              placeholder="Filter by region"
+              selectedKeys={[regionFilter]} 
+              onSelectionChange={onRegionChange} 
+              className="w-full md:max-w-xs"
+              items={React.useMemo(() => [
+                { key: "all", name: "All Regions" }, 
+                ...(marketRegions || []).map(region => ({ key: region.name, name: region.name })) 
+              ], [marketRegions])}
+            >
+              {(item) => ( 
+                <SelectItem key={item.key} textValue={item.name}>
+                  {item.name}
+                </SelectItem>
+              )}
+            </Select>
+          </div>
           <div className="flex gap-3">
             <Button color="primary" startContent={<Icon icon="lucide:plus" />} onPress={handleAddLead}>
               Add Lead
@@ -217,12 +270,11 @@ export const LeadsTable: React.FC = () => {
         <span className="text-default-400 text-small">Total {leads?.length || 0} leads found</span>
       </div>
     );
-  }, [filterValue, onSearchChange, onClear, handleAddLead, leads?.length]);
+  }, [filterValue, onSearchChange, onClear, handleAddLead, leads?.length, regionFilter, onRegionChange, marketRegions]);
 
   const bottomContent = React.useMemo(() => {
     const totalPages = leads ? Math.ceil(leads.length / rowsPerPage) : 0;
     return (
-      // FIX: Apply sticky styles directly to this wrapper div
       <div className="sticky bottom-0 z-20 bg-content1 p-4 border-t border-divider flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-default-500 text-small whitespace-nowrap">Rows per page:</span>
@@ -288,7 +340,6 @@ export const LeadsTable: React.FC = () => {
             wrapper: "flex-grow min-h-[500px]",
             base: "h-full",
             table: "min-w-full",
-            // FIX: Remove the invalid `bottomContent` key from here
             thead: "sticky top-0 z-20 bg-content1",
           }}
           removeWrapper
@@ -307,7 +358,7 @@ export const LeadsTable: React.FC = () => {
           </TableHeader>
           <TableBody
             items={items}
-            isLoading={isLoading}
+            isLoading={(isLoading || isLoadingRegions) && !leads}
             loadingContent={<Spinner label="Loading leads..." />}
             emptyContent={debouncedFilterValue ? "No leads found matching your search." : "No leads to display."}
           >

@@ -5,6 +5,7 @@ import { createAdminServerClient } from '@/lib/supabase/server';
 import { createClient } from '@/lib/supabase/client';
 import type { Tables, TablesInsert, TablesUpdate } from '@/types/supabase';
 import { revalidatePath } from 'next/cache';
+import redis from '@/lib/redis';
 
 // Define types for convenience
 export type Property = Tables<'properties'>;
@@ -13,6 +14,27 @@ export type LeadDetails = {
   property: Property;
   contacts: Contact[];
 };
+
+/**
+ * Helper function to clear all relevant lead and region caches from Redis.
+ */
+async function invalidateLeadCaches() {
+  try {
+    // Find all cache keys related to the leads API
+    const leadCacheKeys = await redis.keys('leads:*');
+    // Also find the market regions cache key
+    const regionCacheKeys = await redis.keys('market_regions:*');
+
+    const allKeys = [...leadCacheKeys, ...regionCacheKeys];
+    
+    if (allKeys.length > 0) {
+      console.log('[CACHE INVALIDATION] Deleting keys:', allKeys);
+      await redis.del(allKeys);
+    }
+  } catch (error) {
+    console.error('Failed to invalidate Redis cache:', error);
+  }
+}
 
 /**
  * Fetches the full details for a single lead, including its property and associated contacts.
@@ -123,6 +145,9 @@ export async function saveLead(leadData: {
         console.warn(`Could not delete removed contacts for property ${savedProperty.property_id}: ${deleteError.message}`);
     }
 
+    // After a successful database operation, invalidate the cache
+    await invalidateLeadCaches();
+
     revalidatePath('/');
     return { data: savedProperty, error: null };
 
@@ -143,6 +168,9 @@ export async function deleteLead(propertyId: string): Promise<{ success: boolean
   try {
     await supabase.from('contacts').delete().eq('property_id', propertyId);
     await supabase.from('properties').delete().eq('property_id', propertyId);
+
+    // After a successful database operation, invalidate the cache
+    await invalidateLeadCaches();
 
     revalidatePath('/');
     return { success: true, error: null };

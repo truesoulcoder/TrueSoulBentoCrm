@@ -2,8 +2,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import type { Database } from '@/types/supabase';
+import redis from '@/lib/redis';
 
 export const dynamic = 'force-dynamic';
+
+const CACHE_TTL_SECONDS = 300; // Cache for 5 minutes
 
 export async function GET(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -14,22 +17,45 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Server configuration error: Missing Supabase credentials." }, { status: 500 });
   }
 
-  const supabase = createClient<Database>(supabaseUrl, serviceKey);
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search') || '';
+  const region = searchParams.get('region') || 'all';
+
+  // Create a dynamic cache key based on the filter parameters
+  const cacheKey = `leads:region:${region}:search:${search || 'none'}`;
 
   try {
-    let query;
-    if (search) {
-      // Use the new RPC call for performing the search
-      query = supabase.rpc('search_properties_with_contacts', { search_term: search });
-    } else {
-      // Original behavior for no search term (initial load)
-      query = supabase
-        .from('properties_with_contacts')
-        .select('*')
-        .limit(1000);
+    // 1. Check Redis cache first
+    const cachedData = await redis.get(cacheKey);
+    if (cachedData) {
+      console.log(`[CACHE HIT] Serving from cache: ${cacheKey}`);
+      return NextResponse.json(JSON.parse(cachedData));
     }
+
+    console.log(`[CACHE MISS] Fetching from database: ${cacheKey}`);
+
+    // 2. If it's a cache miss, query the database
+    const supabase = createClient<Database>(supabaseUrl, serviceKey);
+    
+    let query = supabase
+      .from('properties_with_contacts')
+      .select('*');
+
+    if (region && region !== 'all') {
+      query = query.eq('market_region', region);
+    }
+
+    if (search) {
+      const searchQuery = `%${search}%`;
+      query = query.or(
+        `contact_names.ilike.${searchQuery},` +
+        `property_address.ilike.${searchQuery},` +
+        `property_city.ilike.${searchQuery},` +
+        `status.ilike.${searchQuery}`
+      );
+    }
+
+    query = query.limit(1000).order('created_at', { ascending: false });
 
     const { data, error, status } = await query;
 
@@ -39,6 +65,12 @@ export async function GET(request: NextRequest) {
         { error: `Failed to fetch leads: ${error.message}` },
         { status: 500 }
       );
+    }
+
+    // 3. Store the fresh data in Redis
+    if (data) {
+      await redis.set(cacheKey, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
+      console.log(`[CACHE SET] Stored data for key: ${cacheKey}`);
     }
 
     return NextResponse.json(data);

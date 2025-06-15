@@ -3,6 +3,23 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { parse } from 'csv-parse/sync';
+import redis from '@/lib/redis';
+
+// Helper function to clear all relevant lead and region caches from Redis.
+async function invalidateLeadCaches() {
+  try {
+    const leadCacheKeys = await redis.keys('leads:*');
+    const regionCacheKeys = await redis.keys('market_regions:*');
+    const allKeys = [...leadCacheKeys, ...regionCacheKeys];
+    
+    if (allKeys.length > 0) {
+      console.log('[CACHE INVALIDATION - UPLOAD] Deleting keys:', allKeys);
+      await redis.del(allKeys);
+    }
+  } catch (error) {
+    console.error('Failed to invalidate Redis cache after upload:', error);
+  }
+}
 
 // Helper function to sanitize and parse numeric values that might contain currency symbols or commas
 function sanitizeAndParseFloat(value: string | null | undefined): number | null {
@@ -86,7 +103,6 @@ export async function POST(request: Request) {
     const { error: uploadError } = await supabase.storage.from('lead-uploads').upload(filePath, file);
     if (uploadError) throw uploadError;
 
-    // FIX: Changed 'FILE_UPLOADED' to 'PROCESSING' to match the ENUM definition.
     await supabase.from('upload_jobs').update({ status: 'PROCESSING', progress: 20, message: 'File stored. Checking for duplicates.' }).eq('job_id', jobId);
 
     const { data: dup, error: dupError } = await supabase.from('file_imports').select('file_key').eq('file_key', filePath);
@@ -179,6 +195,9 @@ export async function POST(request: Request) {
     if(fileImportError) throw fileImportError;
 
     await supabase.from('upload_jobs').update({ status: 'COMPLETE', progress: 100, message: 'Import successful!' }).eq('job_id', jobId);
+
+    // After a successful database operation, invalidate the cache
+    await invalidateLeadCaches();
 
     return NextResponse.json({ ok: true, job_id: jobId, message: 'Import complete' });
 
