@@ -37,18 +37,18 @@ const CONTACT_ROLE_OPTIONS: (Tables<'contacts'>['role'])[] = ["owner", "alternat
 const PROPERTY_TYPE_OPTIONS = ["Single Family", "Condo", "Townhouse", "Multi-Family", "Vacant Land"];
 
 const fetcher = async (url: string) => {
-  const response = await fetch(url, {
-    credentials: 'include'
-  });
+  const response = await fetch(url);
   
   if (!response.ok) {
-    throw new Error('Failed to fetch data');
+    const error: any = new Error('An error occurred while fetching the data.');
+    // Attach extra info to the error object
+    error.info = await response.json();
+    error.status = response.status;
+    throw error;
   }
   
   return response.json();
 };
-
-// REMOVED the incorrect useSWR call from here
 
 const getInitialPropertyState = (): TablesUpdate<'properties'> => ({
   property_id: undefined, status: 'New Lead', property_address: '', property_city: '',
@@ -78,8 +78,22 @@ const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, propertyId, onSa
 
   const isNewLead = !propertyId;
   
-  // MOVED the useSWR call inside the component body, where it belongs.
-  const { data: users } = useSWR<Profile[]>('/api/users', fetcher);
+  const { data: users } = useSWR<Profile[]>('/api/users', fetcher, {
+    // This onErrorRetry handler prevents the app from crashing on a 403 error.
+    onErrorRetry: (error, key, config, revalidate, { retryCount }) => {
+      // Never retry on 403 Forbidden
+      if (error.status === 403) return;
+
+      // Never retry for specific key
+      if (key === '/api/users') return;
+
+      // Only retry up to 2 times
+      if (retryCount >= 2) return;
+
+      // Retry after 5 seconds
+      setTimeout(() => revalidate({ retryCount }), 5000);
+    }
+  });
 
   useEffect(() => {
     if (isOpen) {
