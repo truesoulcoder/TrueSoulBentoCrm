@@ -5,8 +5,8 @@ import { createAdminServerClient } from '@/lib/supabase/server';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  // Authorization can be improved here by checking for superadmin role
-  const supabase = createAdminServerClient();
+  // FIX: Added 'await' to resolve the promise and get the client instance.
+  const supabase = await createAdminServerClient();
 
   try {
     const { campaign_id, market_region_id } = await request.json();

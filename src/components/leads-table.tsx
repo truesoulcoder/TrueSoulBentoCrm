@@ -45,13 +45,12 @@ const formatCurrency = (value: number | null | undefined) => {
   }).format(value);
 };
 
-// Added a `className` property for responsive hiding
 const columns = [
-  { name: "STATUS", uid: "status", sortable: true },
-  { name: "CONTACTS", uid: "contact_names", sortable: true },
-  { name: "ADDRESS", uid: "property_address", sortable: true },
+  { name: "STATUS", uid: "status", sortable: true, className: "" },
+  { name: "CONTACTS", uid: "contact_names", sortable: true, className: "" },
+  { name: "ADDRESS", uid: "property_address", sortable: true, className: "hidden sm:table-cell" },
   { name: "REGION", uid: "market_region", sortable: true, className: "hidden md:table-cell" },
-  { name: "MARKET VALUE", uid: "market_value", sortable: true },
+  { name: "MARKET VALUE", uid: "market_value", sortable: true, className: "" },
   { name: "TYPE", uid: "property_type", sortable: true, className: "hidden lg:table-cell" },
   { name: "LIST PRICE", uid: "mls_list_price", sortable: true, className: "hidden lg:table-cell" },
   { name: "DOM", uid: "mls_days_on_market", sortable: true, className: "hidden md:table-cell" },
@@ -199,7 +198,6 @@ export const LeadsTable: React.FC = () => {
   const topContent = React.useMemo(() => {
     return (
       <div className="flex flex-col gap-4">
-        {/* This div now stacks on mobile and becomes a row on medium screens up */}
         <div className="flex flex-col md:flex-row justify-between gap-3 md:items-end">
           <Input
             isClearable
@@ -224,7 +222,8 @@ export const LeadsTable: React.FC = () => {
   const bottomContent = React.useMemo(() => {
     const totalPages = leads ? Math.ceil(leads.length / rowsPerPage) : 0;
     return (
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 py-2">
+      // FIX: Apply sticky styles directly to this wrapper div
+      <div className="sticky bottom-0 z-20 bg-content1 p-4 border-t border-divider flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-default-500 text-small whitespace-nowrap">Rows per page:</span>
           <Dropdown>
@@ -289,8 +288,8 @@ export const LeadsTable: React.FC = () => {
             wrapper: "flex-grow min-h-[500px]",
             base: "h-full",
             table: "min-w-full",
+            // FIX: Remove the invalid `bottomContent` key from here
             thead: "sticky top-0 z-20 bg-content1",
-            bottomContent: "sticky bottom-0 z-20 bg-content1 p-4 border-t border-divider",
           }}
           removeWrapper
         >
@@ -298,7 +297,7 @@ export const LeadsTable: React.FC = () => {
             {(column) => (
               <TableColumn 
                 key={column.uid} 
-                align={column.uid === "actions" ? "center" : "start"} 
+                align="start"
                 allowsSorting={column.sortable}
                 className={column.className}
               >
@@ -313,7 +312,7 @@ export const LeadsTable: React.FC = () => {
             emptyContent={debouncedFilterValue ? "No leads found matching your search." : "No leads to display."}
           >
             {(item) => (
-              <TableRow key={item.property_id} onPress={() => handleEditLead(item.property_id!)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-100">
+              <TableRow key={item.property_id} onClick={() => handleEditLead(item.property_id!)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-100">
                 {(columnKey) => (
                   <TableCell className={columns.find(c => c.uid === columnKey)?.className}>
                     {renderCell(item, columnKey)}

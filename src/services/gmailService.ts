@@ -8,6 +8,7 @@ export interface GmailSendResult {
   internalId?: string;       // The short ID, e.g., '1973e2ad2ea3f111'
   globalMessageId?: string;  // The correct, long ID, e.g., '<...-GMR@mx.google.com>'
   threadId?: string;
+  messageId?: string;        // @deprecated - use globalMessageId instead
   error?: unknown;
 }
 

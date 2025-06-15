@@ -12,7 +12,7 @@ import {
   Button,
   Spinner,
   Divider,
-} from '@heroui/react';
+} from "@heroui/react";
 import { Icon } from '@iconify/react';
 import toast from 'react-hot-toast';
 
@@ -179,11 +179,13 @@ const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, propertyId, onSa
                     <FloatingLabelInput className="col-span-2" label="Postal Code" value={property.property_postal_code || ''} onChange={e => handlePropertyChange('property_postal_code', e.target.value)} />
                   </div>
                   <div className="grid grid-cols-4 gap-4">
+                    {/* START: Conditional Logic for SqFt vs Lot Size */}
                     {property.property_type === 'Vacant Land' ? (
                       <FloatingLabelInput className="col-span-2" label="Lot Size (sqft)" type="number" value={String(property.lot_size_sqft || '')} onChange={e => handlePropertyChange('lot_size_sqft', e.target.value)} />
                     ) : (
                       <FloatingLabelInput className="col-span-2" label="Square Footage" type="number" value={String(property.square_footage || '')} onChange={e => handlePropertyChange('square_footage', e.target.value)} />
                     )}
+                    {/* END: Conditional Logic */}
                     <FloatingLabelInput label="Beds" type="number" value={String(property.beds || '')} onChange={e => handlePropertyChange('beds', e.target.value)} />
                     <FloatingLabelInput label="Baths" type="number" step="0.1" value={String(property.baths || '')} onChange={e => handlePropertyChange('baths', e.target.value)} />
                   </div>
@@ -219,10 +221,10 @@ const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, propertyId, onSa
               <div className="flex items-center justify-between">
                 <h2 className="text-gray-500 dark:text-gray-400 uppercase tracking-widest text-sm font-bold">Contact Info</h2>
                 <div className="flex items-center space-x-1">
-                    <Button isIconOnly variant="light" size="sm" onPress={() => toast('Send Offer feature coming soon.')}>
+                    <Button isIconOnly variant="light" size="sm" onPress={() => toast("Send Offer feature coming soon.")}>
                         <Icon icon="lucide:mail-plus" className="w-5 h-5 text-gray-500" />
                     </Button>
-                    <Button isIconOnly variant="light" size="sm" onPress={() => toast('Send Contract feature coming soon.')}>
+                    <Button isIconOnly variant="light" size="sm" onPress={() => toast("Send Contract feature coming soon.")}>
                         <Icon icon="lucide:file-signature" className="w-5 h-5 text-gray-500" />
                     </Button>
                 </div>
