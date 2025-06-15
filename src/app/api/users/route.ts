@@ -1,6 +1,6 @@
 // src/app/api/users/route.ts
 import { createAdminServerClient } from '@/lib/supabase/server';
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { Database } from '@/types/supabase';
@@ -8,21 +8,39 @@ import type { Database } from '@/types/supabase';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const cookieStore = await cookies(); // FIX: Added await here
+  const cookieStore = await cookies();
+
+  // FIX: Provide the full set of cookie handlers to allow for session refresh.
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { 
-      cookies: { 
-        get: (name) => cookieStore.get(name)?.value 
-      } 
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value, ...options });
+          } catch (error) {
+            // This can happen in read-only Server Components.
+          }
+        },
+        remove(name: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value: '', ...options });
+          } catch (error) {
+            // This can happen in read-only Server Components.
+          }
+        },
+      },
     }
   );
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
     
-    // Authorization check: only superadmins can get the full user list.
+    // Now we can reinstate the proper role check.
     if (!session || (session.user.user_metadata?.user_role as string) !== 'superadmin') {
         return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }

@@ -22,6 +22,7 @@ import type { Tables, TablesInsert, TablesUpdate } from '@/types/supabase';
 import FloatingLabelInput from '@/components/ui/FloatingLabelInput';
 import FloatingLabelSelect from '@/components/ui/FloatingLabelSelect';
 import FloatingLabelTextarea from '@/components/ui/FloatingLabelTextarea';
+import StreetViewMap from './maps/StreetViewMap';
 
 type Property = Tables<'properties'>;
 type Contact = Tables<'contacts'>;
@@ -35,11 +36,20 @@ const LEAD_STATUS_OPTIONS = [
 const CONTACT_ROLE_OPTIONS: (Tables<'contacts'>['role'])[] = ["owner", "alternate_contact", "mls_agent"];
 const PROPERTY_TYPE_OPTIONS = ["Single Family", "Condo", "Townhouse", "Multi-Family", "Vacant Land"];
 
-const fetcher = (url: string) => fetch(url).then(res => {
-  if (res.status === 403) return null;
-  if (!res.ok) throw new Error('An error occurred while fetching the data.');
-  return res.json();
-});
+// src/components/lead-modal.tsx
+const fetcher = async (url: string) => {
+  const response = await fetch(url, {
+    credentials: 'include' // This ensures cookies are sent with the request
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch data');
+  }
+  
+  return response.json();
+};
+
+const { data: users } = useSWR<Profile[]>('/api/users', fetcher);
 
 const getInitialPropertyState = (): TablesUpdate<'properties'> => ({
   property_id: undefined, status: 'New Lead', property_address: '', property_city: '',
@@ -157,15 +167,35 @@ const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, propertyId, onSa
     handleContactChange(index, field, e.target.value);
   };
 
+  const fullAddress = [
+    property.property_address,
+    property.property_city,
+    property.property_state,
+    property.property_postal_code
+  ].filter(Boolean).join(', ');
+
+  const modalTitle = isNewLead ? "Add New Lead" : fullAddress || "Edit Lead";
+
   return (
     <Modal size="5xl" isOpen={isOpen} onClose={onClose} scrollBehavior="inside">
       <ModalContent>
-        <ModalHeader className="flex flex-col gap-1">{isNewLead ? "Add New Lead" : "Edit Lead"}</ModalHeader>
+        <ModalHeader className="flex flex-col gap-1 text-base">
+          {modalTitle}
+        </ModalHeader>
         <ModalBody>
           {isLoading ? (
             <div className="flex justify-center items-center h-96"><Spinner label="Loading Lead Data..." /></div>
           ) : (
             <div className="space-y-6 py-4">
+              
+              {/* Google Street View Map */}
+              <div className="h-[32rem] w-full rounded-lg mb-4 bg-default-100">
+                <StreetViewMap
+                    apiKey={process.env.NEXT_PUBLIC_Maps_API_KEY!}
+                    address={fullAddress}
+                />
+              </div>
+
               <h2 className="text-gray-500 dark:text-gray-400 uppercase tracking-widest text-sm font-bold">Property Info</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                 <div className="flex flex-col space-y-4">
@@ -178,18 +208,19 @@ const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, propertyId, onSa
                     <FloatingLabelInput className="col-span-1" label="State" maxLength={2} value={property.property_state || ''} onChange={e => handlePropertyChange('property_state', e.target.value)} />
                     <FloatingLabelInput className="col-span-2" label="Postal Code" value={property.property_postal_code || ''} onChange={e => handlePropertyChange('property_postal_code', e.target.value)} />
                   </div>
+                  
                   <div className="grid grid-cols-4 gap-4">
-                    {/* START: Conditional Logic for SqFt vs Lot Size */}
                     {property.property_type === 'Vacant Land' ? (
-                      <FloatingLabelInput className="col-span-2" label="Lot Size (sqft)" type="number" value={String(property.lot_size_sqft || '')} onChange={e => handlePropertyChange('lot_size_sqft', e.target.value)} />
+                      <FloatingLabelInput className="col-span-4" label="Lot Size (sqft)" type="number" value={String(property.lot_size_sqft || '')} onChange={e => handlePropertyChange('lot_size_sqft', e.target.value)} />
                     ) : (
-                      <FloatingLabelInput className="col-span-2" label="Square Footage" type="number" value={String(property.square_footage || '')} onChange={e => handlePropertyChange('square_footage', e.target.value)} />
+                      <>
+                        <FloatingLabelInput className="col-span-1" label="SqFt" type="number" value={String(property.square_footage || '')} onChange={e => handlePropertyChange('square_footage', e.target.value)} />
+                        <FloatingLabelInput className="col-span-1" label="Beds" type="number" value={String(property.beds || '')} onChange={e => handlePropertyChange('beds', e.target.value)} />
+                        <FloatingLabelInput className="col-span-1" label="Baths" type="number" step="0.1" value={String(property.baths || '')} onChange={e => handlePropertyChange('baths', e.target.value)} />
+                        <FloatingLabelInput className="col-span-1" label="Year" type="number" value={String(property.year_built || '')} onChange={e => handlePropertyChange('year_built', e.target.value)} />
+                      </>
                     )}
-                    {/* END: Conditional Logic */}
-                    <FloatingLabelInput label="Beds" type="number" value={String(property.beds || '')} onChange={e => handlePropertyChange('beds', e.target.value)} />
-                    <FloatingLabelInput label="Baths" type="number" step="0.1" value={String(property.baths || '')} onChange={e => handlePropertyChange('baths', e.target.value)} />
                   </div>
-                   <FloatingLabelInput label="Year Built" type="number" value={String(property.year_built || '')} onChange={e => handlePropertyChange('year_built', e.target.value)} />
                 </div>
 
                 <div className="flex flex-col space-y-4">
@@ -206,12 +237,12 @@ const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, propertyId, onSa
                   </FloatingLabelSelect>
                   <div className="grid grid-cols-3 gap-4">
                     <FloatingLabelInput label="DOM" type="number" value={String(property.mls_days_on_market || '')} onChange={e => handlePropertyChange('mls_days_on_market', e.target.value)} />
-                    <FloatingLabelInput label="List Price" type="number" startContent="$" value={String(property.mls_list_price || '')} onChange={e => handlePropertyChange('mls_list_price', e.target.value)} />
-                    <FloatingLabelInput label="Assessed Total" type="number" startContent="$" value={String(property.assessed_total || '')} onChange={e => handlePropertyChange('assessed_total', e.target.value)} />
+                    <FloatingLabelInput label="List $" type="number" startContent="$" value={String(property.mls_list_price || '')} onChange={e => handlePropertyChange('mls_list_price', e.target.value)} />
+                    <FloatingLabelInput label="Assessed $" type="number" startContent="$" value={String(property.assessed_total || '')} onChange={e => handlePropertyChange('assessed_total', e.target.value)} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <FloatingLabelInput label="Market Value" type="number" startContent="$" value={String(property.market_value || '')} onChange={e => handlePropertyChange('market_value', e.target.value)} />
-                    <FloatingLabelInput label="Wholesale Value" type="number" startContent="$" value={String(property.wholesale_value || '')} onChange={e => handlePropertyChange('wholesale_value', e.target.value)} />
+                    <FloatingLabelInput label="Market $" type="number" startContent="$" value={String(property.market_value || '')} onChange={e => handlePropertyChange('market_value', e.target.value)} />
+                    <FloatingLabelInput label="Wholesale $" type="number" startContent="$" value={String(property.wholesale_value || '')} onChange={e => handlePropertyChange('wholesale_value', e.target.value)} />
                   </div>
                 </div>
               </div>
@@ -221,10 +252,10 @@ const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, propertyId, onSa
               <div className="flex items-center justify-between">
                 <h2 className="text-gray-500 dark:text-gray-400 uppercase tracking-widest text-sm font-bold">Contact Info</h2>
                 <div className="flex items-center space-x-1">
-                    <Button isIconOnly variant="light" size="sm" onPress={() => toast("Send Offer feature coming soon.")}>
+                    <Button isIconOnly variant="light" size="sm" onPress={() => toast('Send Offer feature coming soon.', { icon: 'lucide:mail-plus' })}>
                         <Icon icon="lucide:mail-plus" className="w-5 h-5 text-gray-500" />
                     </Button>
-                    <Button isIconOnly variant="light" size="sm" onPress={() => toast("Send Contract feature coming soon.")}>
+                    <Button isIconOnly variant="light" size="sm" onPress={() => toast('Send Contract feature coming soon.', { icon: 'lucide:file-signature' })}>
                         <Icon icon="lucide:file-signature" className="w-5 h-5 text-gray-500" />
                     </Button>
                 </div>
