@@ -1,29 +1,47 @@
 // src/lib/redis.ts
 import Redis from 'ioredis';
 
-// Ensure the REDIS_URL is set in your environment variables
+// Declare a global variable to hold the Redis instance.
+// Using 'var' in the global scope (or a globalThis object) is a common pattern
+// to ensure the instance persists across hot reloads in development.
+declare global {
+  // eslint-disable-next-line no-var
+  var redis: Redis | undefined;
+}
+
+let redis: Redis | undefined;
+
 if (!process.env.REDIS_URL) {
   throw new Error('REDIS_URL is not set in environment variables');
 }
 
-// Create a new Redis instance with options optimized for serverless environments.
-const redis = new Redis(process.env.REDIS_URL, {
-  // Set a connection timeout
-  connectTimeout: 10000, // 10 seconds
-  // Do not retry more than 3 times for a single command.
-  // This prevents long-running retries in a serverless function.
-  maxRetriesPerRequest: 3,
-  // This option can help in some serverless environments.
-  enableReadyCheck: false,
-});
+// In development, we use a global variable so that the value
+// is preserved across module reloads caused by HMR (Hot Module Replacement).
+if (process.env.NODE_ENV === 'development') {
+  if (!global.redis) {
+    global.redis = new Redis(process.env.REDIS_URL, {
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: false,
+    });
+    console.log('New Redis client connected (development).');
+  }
+  redis = global.redis;
+} else {
+  // In production, we create a single instance.
+  redis = new Redis(process.env.REDIS_URL, {
+    maxRetriesPerRequest: 3,
+    enableReadyCheck: false,
+  });
+  console.log('New Redis client connected (production).');
+}
 
 redis.on('error', (err) => {
-  // Prevent crashing the process on connection errors, as we handle them in API routes.
   console.error('Redis Client Error:', err);
 });
 
 redis.on('connect', () => {
   console.log('Successfully connected to Redis.');
 });
+
 
 export default redis;
