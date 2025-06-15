@@ -36,10 +36,9 @@ const LEAD_STATUS_OPTIONS = [
 const CONTACT_ROLE_OPTIONS: (Tables<'contacts'>['role'])[] = ["owner", "alternate_contact", "mls_agent"];
 const PROPERTY_TYPE_OPTIONS = ["Single Family", "Condo", "Townhouse", "Multi-Family", "Vacant Land"];
 
-// src/components/lead-modal.tsx
 const fetcher = async (url: string) => {
   const response = await fetch(url, {
-    credentials: 'include' // This ensures cookies are sent with the request
+    credentials: 'include'
   });
   
   if (!response.ok) {
@@ -49,7 +48,7 @@ const fetcher = async (url: string) => {
   return response.json();
 };
 
-const { data: users } = useSWR<Profile[]>('/api/users', fetcher);
+// REMOVED the incorrect useSWR call from here
 
 const getInitialPropertyState = (): TablesUpdate<'properties'> => ({
   property_id: undefined, status: 'New Lead', property_address: '', property_city: '',
@@ -78,6 +77,8 @@ const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, propertyId, onSa
   const [error, setError] = useState<string | null>(null);
 
   const isNewLead = !propertyId;
+  
+  // MOVED the useSWR call inside the component body, where it belongs.
   const { data: users } = useSWR<Profile[]>('/api/users', fetcher);
 
   useEffect(() => {

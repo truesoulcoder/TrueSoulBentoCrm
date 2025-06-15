@@ -8,7 +8,7 @@ import type { Database } from '@/types/supabase';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const cookieStore = await cookies();
+  const cookieStore = cookies();
 
   // FIX: Provide the full set of cookie handlers to allow for session refresh.
   const supabase = createServerClient<Database>(
@@ -16,19 +16,19 @@ export async function GET() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        async get(name: string) {
+          return (await cookieStore).get(name)?.value;
         },
-        set(name: string, value: string, options: CookieOptions) {
+        async set(name: string, value: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value, ...options });
+            (await cookieStore).set({ name, value, ...options });
           } catch (error) {
             // This can happen in read-only Server Components.
           }
         },
-        remove(name: string, options: CookieOptions) {
+        async remove(name: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value: '', ...options });
+            (await cookieStore).set({ name, value: '', ...options });
           } catch (error) {
             // This can happen in read-only Server Components.
           }

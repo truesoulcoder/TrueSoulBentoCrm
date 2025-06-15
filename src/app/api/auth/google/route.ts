@@ -1,4 +1,5 @@
 // src/app/api/auth/google/route.ts
+// src/app/api/auth/google/route.ts
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
@@ -8,7 +9,7 @@ export async function GET(request: Request) {
   const next = searchParams.get('next') || '/';
   const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
-  // Fix: Await the cookieStore promise
+  // FIX: Added 'await' here because cookies() returns a Promise.
   const cookieStore = await cookies();
 
   const supabase = createServerClient(
@@ -44,7 +45,6 @@ export async function GET(request: Request) {
 
     if (error) {
         console.error('Error initiating Google OAuth:', error);
-        // Redirect to an error page or show a generic error
         return NextResponse.redirect(`${origin}/auth/auth-code-error?error=${encodeURIComponent(error.message)}`);
     }
 
