@@ -9,8 +9,10 @@ export async function GET() {
   const supabase = await createAdminServerClient();
 
   try {
+    // FIX: Query the `active_market_regions` view instead of the base table.
+    // This view correctly lists regions that have leads associated with them.
     const { data, error } = await supabase
-      .from('market_regions')
+      .from('active_market_regions')
       .select('id, name')
       .order('name', { ascending: true });
 
