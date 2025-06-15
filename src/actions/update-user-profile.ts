@@ -1,3 +1,4 @@
+// src/actions/update-user-profile.ts
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
@@ -5,8 +6,8 @@ import { cookies } from 'next/headers';
 
 export async function updateUserProfile() {
   try {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    // FIX: Await the createClient() function since it is now async.
+    const supabase = await createClient();
 
     // Get the current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();

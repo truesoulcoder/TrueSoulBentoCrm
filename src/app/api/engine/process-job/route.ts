@@ -6,7 +6,8 @@ import { generateLoiPdf, type PersonalizationData } from '@/services/pdfService'
 import { generateOfferDetails } from '@/actions/offerCalculations';
 import { configure } from 'nunjucks';
 import path from 'path';
-import type { Database } from '@/types/supabase';
+// FIX: Import the Json type
+import type { Database, Json } from '@/types/supabase';
 
 type Lead = Database['public']['Tables']['crm_leads']['Row'];
 type Sender = Database['public']['Tables']['senders']['Row'];
@@ -15,7 +16,8 @@ type CampaignStep = Database['public']['Tables']['campaign_steps']['Row'];
 const templateDir = path.join(process.cwd(), 'src', 'app', 'api', 'engine', 'templates');
 const nunjucksEnv = configure(templateDir, { autoescape: true, noCache: true });
 
-async function logJobOutcome(supabase: Awaited<ReturnType<typeof createAdminServerClient>>, jobId: string, message: string, details?: object) {
+// FIX: Change the type of the 'details' parameter from 'object' to 'Json'
+async function logJobOutcome(supabase: Awaited<ReturnType<typeof createAdminServerClient>>, jobId: string, message: string, details?: Json) {
   const { error } = await supabase.from('job_logs').insert({ job_id: jobId, log_message: message, details: details || {} });
   if (error) {
     console.error(`CRITICAL: Failed to log outcome for job ${jobId}:`, error);
@@ -48,8 +50,8 @@ export async function POST(request: NextRequest) {
     if (jobError) throw new Error(`Database error fetching job: ${jobError.message}`);
     if (!jobData) throw new Error(`Job with ID ${jobId} not found.`);
 
-    const lead = jobData.crm_leads as Lead;
-    const campaignSteps = jobData.campaigns?.campaign_steps as CampaignStep[] | undefined;
+    const lead = jobData.crm_leads as unknown as Lead;
+    const campaignSteps = jobData.campaigns?.campaign_steps as unknown as CampaignStep[] | undefined;
 
     if (!lead) throw new Error(`Lead data is missing for job ${jobId}.`);
     if (!campaignSteps || campaignSteps.length === 0) throw new Error(`No campaign steps found for job ${jobId}.`);
@@ -99,14 +101,13 @@ export async function POST(request: NextRequest) {
     );
 
     if (!emailResult.success) {
-      // FIX: Explicitly convert the 'unknown' error type to a string before throwing.
       const errorMessage = String(emailResult.error || "Unknown email sending error.");
       throw new Error(errorMessage);
     }
     
     await supabase.from('campaign_jobs').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', jobId);
     await supabase.rpc('increment_sender_sent_count', { sender_id: sender.id });
-    await logJobOutcome(supabase, jobId, 'Job processed and email sent successfully.', { messageId: emailResult.messageId });
+    await logJobOutcome(supabase, jobId, 'Job processed and email sent successfully.', { messageId: emailResult.globalMessageId });
 
     return NextResponse.json({ success: true, message: `Job ${jobId} processed.` });
 

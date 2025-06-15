@@ -5,26 +5,23 @@ import { createAdminServerClient } from '@/lib/supabase/server';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  // FIX: Added 'await' to resolve the promise and get the client instance.
   const supabase = await createAdminServerClient();
 
   try {
-    const { campaign_id, market_region_id } = await request.json();
+    const { campaign_id } = await request.json();
 
     if (!campaign_id) {
       return NextResponse.json({ error: "campaign_id is required." }, { status: 400 });
     }
-    if (!market_region_id) {
-      return NextResponse.json({ error: "market_region_id is required." }, { status: 400 });
-    }
     
-    // Call the database function to schedule the jobs
+    // FIX: The `schedule_campaign_jobs` function now only accepts `p_campaign_id`.
+    // The market region is derived from the campaign record within the function itself.
     const { data: jobsCreated, error } = await supabase.rpc('schedule_campaign_jobs', {
       p_campaign_id: campaign_id,
-      p_market_region_id: market_region_id,
     });
 
     if (error) {
+      console.error(`Error calling schedule_campaign_jobs RPC for campaign ${campaign_id}:`, error);
       throw new Error(`Failed to schedule campaign jobs: ${error.message}`);
     }
 

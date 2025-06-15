@@ -1,5 +1,4 @@
 // src/app/api/auth/google/route.ts
-// src/app/api/auth/google/route.ts
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
@@ -9,7 +8,7 @@ export async function GET(request: Request) {
   const next = searchParams.get('next') || '/';
   const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
-  // FIX: Added 'await' here because cookies() returns a Promise.
+  // FIX: Await the cookies() promise here to get the cookie store object.
   const cookieStore = await cookies();
 
   const supabase = createServerClient(
@@ -17,6 +16,7 @@ export async function GET(request: Request) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
+        // The handlers now use the resolved cookieStore object synchronously.
         get(name: string) {
           return cookieStore.get(name)?.value;
         },

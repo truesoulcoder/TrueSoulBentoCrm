@@ -8,27 +8,28 @@ import type { Database } from '@/types/supabase';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const cookieStore = cookies();
+  // FIX: Await the cookies() promise here to get the cookie store object.
+  const cookieStore = await cookies();
 
-  // FIX: Provide the full set of cookie handlers to allow for session refresh.
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        async get(name: string) {
-          return (await cookieStore).get(name)?.value;
+        // The handlers now use the resolved cookieStore object synchronously.
+        get(name: string) {
+          return cookieStore.get(name)?.value;
         },
-        async set(name: string, value: string, options: CookieOptions) {
+        set(name: string, value: string, options: CookieOptions) {
           try {
-            (await cookieStore).set({ name, value, ...options });
+            cookieStore.set({ name, value, ...options });
           } catch (error) {
             // This can happen in read-only Server Components.
           }
         },
-        async remove(name: string, options: CookieOptions) {
+        remove(name: string, options: CookieOptions) {
           try {
-            (await cookieStore).set({ name, value: '', ...options });
+            cookieStore.set({ name, value: '', ...options });
           } catch (error) {
             // This can happen in read-only Server Components.
           }
@@ -40,12 +41,10 @@ export async function GET() {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     
-    // Now we can reinstate the proper role check.
     if (!session || (session.user.user_metadata?.user_role as string) !== 'superadmin') {
         return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
 
-    // If authorized, use the admin client to fetch all profiles.
     const adminSupabase = await createAdminServerClient();
     const { data: profiles, error: profilesError } = await adminSupabase
       .from('profiles')

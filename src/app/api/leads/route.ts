@@ -40,25 +40,23 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createClient<Database>(supabaseUrl, serviceKey);
     
-    let query = supabase
-      .from('properties_with_contacts')
-      .select('*');
+    // FIX: Switched from manual query builder to the optimized RPC function
+    // for significantly better performance, which avoids the 504 Gateway Timeout.
+    let query;
+    if (search) {
+      // Use the dedicated search function when a search term is provided
+      query = supabase.rpc('search_properties_with_contacts', { search_term: search });
+    } else {
+      // Use the view directly when there's no search term
+      query = supabase.from('properties_with_contacts').select('*');
+    }
 
     if (region && region !== 'all') {
       query = query.eq('market_region', region);
     }
-
-    if (search) {
-      const searchQuery = `%${search}%`;
-      query = query.or(
-        `contact_names.ilike.${searchQuery},` +
-        `property_address.ilike.${searchQuery},` +
-        `property_city.ilike.${searchQuery},` +
-        `status.ilike.${searchQuery}`
-      );
-    }
-
-    query = query.limit(1000).order('created_at', { ascending: false });
+    
+    // Apply ordering and limit after selecting the base query
+    query = query.order('created_at', { ascending: false }).limit(1000);
 
     const { data, error } = await query;
 
