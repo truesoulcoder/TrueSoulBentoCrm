@@ -18,34 +18,71 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({ name, value, ...options });
-          response.cookies.set({ name, value, ...options });
+          // If the cookie is set, update the request's cookies.
+          request.cookies.set({
+            name,
+            value,
+            ...options,
+          });
+          // Also update the response's cookies.
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          });
+          response.cookies.set({
+            name,
+            value,
+            ...options,
+          });
         },
         remove(name: string, options: CookieOptions) {
-          request.cookies.set({ name, value: '', ...options });
-          response.cookies.set({ name, value: '', ...options });
+          // If the cookie is removed, update the request's cookies.
+          request.cookies.set({
+            name,
+            value: '',
+            ...options,
+          });
+          // Also update the response's cookies.
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          });
+          response.cookies.set({
+            name,
+            value: '',
+            ...options,
+          });
         },
       },
     }
   );
 
-  // This will refresh the session if it's expired
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Refresh session if expired - this will set cookies if necessary
+  const { data: { user } } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
   const loginPath = '/login';
 
-  // If the user is not authenticated and is trying to access a protected route
+  // --- DIAGNOSTIC LOGS ---
+  console.log(`[Middleware] Path: ${pathname}`);
+  if (user) {
+    console.log(`[Middleware] User found: ${user.id}`);
+  } else {
+    console.log('[Middleware] No user found.');
+  }
+  // -----------------------
+
+  // If no user is found and they are not on the login page, redirect them.
   if (!user && pathname !== loginPath) {
-    // Redirect them to the login page
+    console.log('[Middleware] Redirecting to login page.');
     return NextResponse.redirect(new URL(loginPath, request.url));
   }
 
-  // If the user is authenticated and tries to access the login page
+  // If a user is found and they are trying to access the login page, redirect to home.
   if (user && pathname === loginPath) {
-    // Redirect them to the main dashboard page
+    console.log('[Middleware] User is logged in, redirecting to dashboard.');
     return NextResponse.redirect(new URL('/', request.url));
   }
 
@@ -61,7 +98,8 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - public (public files)
+     * - auth/callback (the OAuth callback route)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|public).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|public|auth/callback).*)',
   ],
 };
