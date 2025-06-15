@@ -50,10 +50,14 @@ export const CampaignConsole: React.FC<CampaignConsoleProps> = ({ isRunning, isP
     },
   ]);
 
-  const logEndRef = React.useRef<HTMLDivElement>(null);
+  // Ref for the scrollable container itself
+  const scrollRef = React.useRef<HTMLDivElement>(null);
 
+  // Updated function to scroll the container, not the window
   const scrollToBottom = () => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   };
 
   React.useEffect(() => {
@@ -151,7 +155,7 @@ export const CampaignConsole: React.FC<CampaignConsoleProps> = ({ isRunning, isP
         </Button>
       </div>
 
-      <ScrollShadow className="h-full rounded-medium bg-content2 p-3 font-mono text-xs">
+      <ScrollShadow ref={scrollRef} className="h-full rounded-medium bg-content2 p-3 font-mono text-xs">
         {logs.map((log) => (
           <div key={log.id} className="mb-1 flex items-start gap-2">
             <span className="text-default-400">[{log.timestamp}]</span>
@@ -159,7 +163,7 @@ export const CampaignConsole: React.FC<CampaignConsoleProps> = ({ isRunning, isP
             <span>{log.message}</span>
           </div>
         ))}
-        <div ref={logEndRef} />
+        {/* The empty div for the old ref is no longer needed */}
       </ScrollShadow>
     </div>
   );
