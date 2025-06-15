@@ -1,47 +1,42 @@
 // src/lib/redis.ts
 import Redis from 'ioredis';
 
-// Declare a global variable to hold the Redis instance.
-// Using 'var' in the global scope (or a globalThis object) is a common pattern
-// to ensure the instance persists across hot reloads in development.
+// This will be our singleton instance
+let redis: Redis;
+
+// This trick is to prevent multiple instances in development with hot-reloading
 declare global {
   // eslint-disable-next-line no-var
-  var redis: Redis | undefined;
+  var __redis: Redis | undefined;
 }
-
-let redis: Redis | undefined;
 
 if (!process.env.REDIS_URL) {
   throw new Error('REDIS_URL is not set in environment variables');
 }
 
-// In development, we use a global variable so that the value
-// is preserved across module reloads caused by HMR (Hot Module Replacement).
-if (process.env.NODE_ENV === 'development') {
-  if (!global.redis) {
-    global.redis = new Redis(process.env.REDIS_URL, {
-      maxRetriesPerRequest: 3,
-      enableReadyCheck: false,
-    });
-    console.log('New Redis client connected (development).');
-  }
-  redis = global.redis;
+const redisOptions = {
+  // Only connect when a command is first issued, best for serverless envs.
+  lazyConnect: true,
+  maxRetriesPerRequest: 3,
+  enableReadyCheck: false,
+};
+
+// In a serverless environment or for a single-instance app, you can
+// create the connection once and reuse it. The global variable helps
+// avoid re-creating the connection on every hot-reload in development.
+if (process.env.NODE_ENV === 'production') {
+  redis = new Redis(process.env.REDIS_URL, redisOptions);
 } else {
-  // In production, we create a single instance.
-  redis = new Redis(process.env.REDIS_URL, {
-    maxRetriesPerRequest: 3,
-    enableReadyCheck: false,
-  });
-  console.log('New Redis client connected (production).');
+  if (!global.__redis) {
+    global.__redis = new Redis(process.env.REDIS_URL, redisOptions);
+    console.log('New lazy Redis client created for development.');
+  }
+  redis = global.__redis;
 }
 
 redis.on('error', (err) => {
   console.error('Redis Client Error:', err);
 });
 
-redis.on('connect', () => {
-  console.log('Successfully connected to Redis.');
-});
-
-
+// We now export the guaranteed-to-be-defined instance.
 export default redis;
