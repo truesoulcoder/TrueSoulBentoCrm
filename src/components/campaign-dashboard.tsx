@@ -1,170 +1,160 @@
-// src/components/campaign-dashboard.tsx
-import * as React from "react";
-import { Icon } from "@iconify/react";
+'use client'
+
+import { Campaign, Lead } from '@/types'
 import {
-  Card,
-  CardBody,
-  CardHeader,
-  CardFooter,
-  Dropdown,
-  DropdownTrigger,
-  DropdownMenu,
-  DropdownItem,
-  Button,
-  Badge,
-  Progress,
-  Tabs,
-  Tab,
-  Checkbox,
-  Input,
-  Table,
-  TableHeader,
-  TableColumn,
-  TableBody,
-  TableRow,
-  TableCell,
-} from "@heroui/react";
-import { CampaignChart } from "./campaign-chart";
-import { CampaignConsole } from "./campaign-console";
-import { CampaignStatus } from "./campaign-status";
-import { EmailSelector } from "./email-selector";
-import { TemplatePreview } from "./template-preview";
-import { Tooltip } from "@heroui/react";
-import { DraggableDashboard } from "./draggable-dashboard";
-import { LeadsTable } from "./leads-table";
-import { FC } from 'react';
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { useState, useEffect } from 'react'
+import { LeadsTable } from './leads-table'
+import { CampaignSettings } from './campaign-settings'
+import { TemplatePreview } from './template-preview'
+import { EmailSelector } from './email-selector'
+import { CampaignConsole } from './campaign-console'
 
-interface CampaignDashboardProps {}
+export function CampaignDashboard({ leads }: { leads: Lead[] }) {
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const limit = 15; // You can adjust the number of items per page
 
-const CampaignDashboard: FC<CampaignDashboardProps> = () => {
-  const [isRunning, setIsRunning] = React.useState<boolean>(false);
-  const [isPaused, setIsPaused] = React.useState<boolean>(false);
-  const [currentCampaign, setCurrentCampaign] = React.useState<string>("Summer Promotion");
-  const [isEditMode, setIsEditMode] = React.useState<boolean>(false);
+  async function fetchCampaigns(pageNum: number) {
+    if (pageNum === 1) {
+        setCampaigns([]);
+    }
+    setIsLoading(true);
+    try {
+        const response = await fetch(`/api/campaigns?page=${pageNum}&limit=${limit}`);
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || 'Failed to fetch campaigns');
+        }
+        const { campaigns: newCampaigns, count } = await response.json();
+        
+        setCampaigns(prev => [...prev, ...newCampaigns]);
+        setTotalCount(count);
+        setPage(pageNum);
 
-  const handleStart = () => {
-    setIsRunning(true);
-    setIsPaused(false);
+        if (!selectedCampaign && pageNum === 1 && newCampaigns.length > 0) {
+            setSelectedCampaign(newCampaigns[0]);
+        }
+    } catch (err: any) {
+        setError(err.message);
+    } finally {
+        setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchCampaigns(1);
+  }, []);
+
+  const handleLoadMore = () => {
+    if (campaigns.length < totalCount) {
+        fetchCampaigns(page + 1);
+    }
   };
 
-  const handlePause = () => {
-    setIsPaused(true);
-  };
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
-  const handleStop = () => {
-    setIsRunning(false);
-    setIsPaused(false);
-  };
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
 
-  const handleResume = () => {
-    setIsPaused(false);
-  };
+    if (over && active.id !== over.id) {
+      setCampaigns(items => {
+        const oldIndex = items.findIndex(item => item.id === active.id)
+        const newIndex = items.findIndex(item => item.id === over.id)
+        return arrayMove(items, oldIndex, newIndex)
+      })
+    }
+  }
 
-  const campaignItems = [
-    { key: 'Summer Promotion', label: 'Summer Promotion' },
-    { key: 'Winter Sale', label: 'Winter Sale' },
-    { key: 'New Product Launch', label: 'New Product Launch' }
-  ] as const;
+  if (error) {
+      return <div className="flex h-screen items-center justify-center text-red-500">Error: {error}</div>
+  }
 
   return (
-    <div className="w-[90%] mx-auto">
-      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Campaign Dashboard</h1>
-          <p className="text-small text-default-500">Manage and monitor your email campaigns</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Tooltip content={isEditMode ? "Exit Layout Edit Mode" : "Customize Dashboard Layout"}>
-            <Button
-              variant="flat"
-              color={isEditMode ? "primary" : "default"}
-              startContent={<Icon icon={isEditMode ? "lucide:check" : "lucide:layout"} />}
-              onPress={() => setIsEditMode(!isEditMode)}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
+        <aside className="w-1/4 bg-white p-4 dark:bg-gray-800 flex flex-col">
+          <h2 className="text-xl font-bold mb-4">Campaigns</h2>
+          <div className="flex-grow overflow-y-auto pr-2">
+            <SortableContext
+              items={campaigns.map(c => String(c.id))}
+              strategy={verticalListSortingStrategy}
             >
-              {isEditMode ? "Save Layout" : "Edit Layout"}
-            </Button>
-          </Tooltip>
+              {campaigns.map(campaign => (
+                <div 
+                  key={campaign.id} 
+                  onClick={() => setSelectedCampaign(campaign)}
+                  className={`p-2 my-1 cursor-pointer rounded transition-colors ${selectedCampaign?.id === campaign.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                >
+                    {campaign.name}
+                </div>
+              ))}
+            </SortableContext>
+            {isLoading && <p className="text-center p-4">Loading...</p>}
+            {!isLoading && campaigns.length < totalCount && (
+                <button onClick={handleLoadMore} className="mt-4 w-full text-center py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded">
+                    Load More
+                </button>
+            )}
+          </div>
+        </aside>
 
-          <Dropdown>
-            <DropdownTrigger>
-              <Button 
-                variant="flat"
-                endContent={<Icon icon="lucide:chevron-down" />}
-              >
-                {currentCampaign}
-              </Button>
-            </DropdownTrigger>
-            <DropdownMenu 
-              aria-label="Campaign selection"
-              items={campaignItems}
-              onAction={(key: React.Key) => setCurrentCampaign(key.toString())}
-            >
-              {(item) => (
-                <DropdownItem key={item.key}>
-                  {item.label}
-                </DropdownItem>
-              )}
-            </DropdownMenu>
-          </Dropdown>
-
-          {!isRunning ? (
-            <Button
-              color="primary"
-              startContent={<Icon icon="lucide:play" />}
-              onPress={handleStart}
-            >
-              Start Campaign
-            </Button>
-          ) : isPaused ? (
-            <div className="flex gap-2">
-              <Button
-                color="primary"
-                variant="flat"
-                startContent={<Icon icon="lucide:play" />}
-                onPress={handleResume}
-              >
-                Resume
-              </Button>
-              <Button
-                color="danger"
-                variant="flat"
-                startContent={<Icon icon="lucide:square" />}
-                onPress={handleStop}
-              >
-                Stop
-              </Button>
+        <main className="flex-1 p-6 overflow-y-auto">
+          {selectedCampaign ? (
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-2">
+                <LeadsTable
+                  leads={leads.filter(
+                    l => l.campaign_id === selectedCampaign.id
+                  )}
+                />
+              </div>
+              <div>
+                <CampaignSettings campaign={selectedCampaign} />
+                <TemplatePreview />
+                <EmailSelector />
+              </div>
+              <div className="lg:col-span-3">
+                <CampaignConsole />
+              </div>
             </div>
           ) : (
-            <div className="flex gap-2">
-              <Button
-                color="warning"
-                variant="flat"
-                startContent={<Icon icon="lucide:pause" />}
-                onPress={handlePause}
-              >
-                Pause
-              </Button>
-              <Button
-                color="danger"
-                variant="flat"
-                startContent={<Icon icon="lucide:square" />}
-                onPress={handleStop}
-              >
-                Stop
-              </Button>
+            <div className="flex h-full items-center justify-center">
+              <p className="text-gray-500">
+                {isLoading ? 'Loading campaigns...' : 'No campaigns found or select one to view details'}
+              </p>
             </div>
           )}
-        </div>
+        </main>
       </div>
-
-      <DraggableDashboard
-        isRunning={isRunning}
-        isPaused={isPaused}
-        currentCampaign={currentCampaign}
-        isEditMode={isEditMode}
-      />
-    </div>
-  );
-};
-
-export default CampaignDashboard;
+    </DndContext>
+  )
+}
