@@ -1,6 +1,6 @@
 // src/app/api/users/route.ts
 import { createAdminServerClient } from '@/lib/supabase/server';
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { Database } from '@/types/supabase';
@@ -8,7 +8,8 @@ import type { Database } from '@/types/supabase';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const cookieStore = cookies();
+  // FIX: Await the cookies() call to get the resolved cookie store.
+  const cookieStore = await cookies();
 
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,18 +17,32 @@ export async function GET() {
     {
       cookies: {
         get(name: string) {
+          // This now works because cookieStore is an object, not a Promise
           return cookieStore.get(name)?.value;
         },
-        set() { /* Read-only in this context */ },
-        remove() { /* Read-only in this context */ },
+        set(name: string, value: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value, ...options });
+          } catch (error) {
+            // This can happen in read-only Server Components.
+          }
+        },
+        remove(name: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value: '', ...options });
+          } catch (error) {
+            // This can happen in read-only Server Components.
+          }
+        },
       },
     }
   );
 
   try {
-    // FIX: Use getUser() to securely validate the user's session and role.
+    // FIX: Switched from getSession() to getUser() for better security
     const { data: { user } } = await supabase.auth.getUser();
     
+    // The role check for 'superadmin' will now work correctly.
     if (!user || (user.user_metadata?.user_role as string) !== 'superadmin') {
         return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
