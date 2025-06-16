@@ -42,10 +42,8 @@ export async function GET(request: NextRequest) {
     
     let query;
     if (search) {
-      // Use the dedicated search function when a search term is provided
       query = supabase.rpc('search_properties_with_contacts', { search_term: search });
     } else {
-      // Use the view directly when there's no search term
       query = supabase.from('properties_with_contacts').select('*');
     }
 
