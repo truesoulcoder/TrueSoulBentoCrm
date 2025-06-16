@@ -3,7 +3,7 @@
 
 import React, { useState, useCallback } from 'react';
 import useSWR from 'swr';
-import { Card, CardHeader, CardBody, Button, Select, SelectItem, Progress, Chip, useDisclosure } from "@heroui/react";
+import { Button, Select, SelectItem, Chip, useDisclosure } from "@heroui/react";
 import { Icon } from '@iconify/react';
 import toast from 'react-hot-toast';
 import { CreateCampaignModal } from './create-campaign-modal';
@@ -18,30 +18,38 @@ const fetcher = (url: string) => fetch(url).then(res => {
   return res.json();
 });
 
-
 // Type for the engine's state
 type EngineState = {
   status: 'running' | 'paused' | 'stopped';
   updated_at: string;
 };
 
-// Type for a campaign
+// Type for a single campaign
 type Campaign = {
   id: string;
   name: string;
-  market_region_id: string; // Add this to align with schema
+  market_region_id: string;
+};
+
+// FIX: Define a type for the actual API response shape
+type CampaignsApiResponse = {
+  campaigns: Campaign[];
+  count: number | null;
 };
 
 export const CampaignEngineManager: React.FC = () => {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { isOpen, onOpen, onClose } = useDisclosure(); // Hook for modal state
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
-  // Fetch all necessary data using SWR
+  // Fetch engine state and campaigns
   const { data: engineState, mutate: mutateEngineState } = useSWR<EngineState>('/api/engine/control', fetcher, { refreshInterval: 5000 });
-  const { data: campaigns, mutate: mutateCampaigns } = useSWR<Campaign[]>('/api/campaigns', fetcher);
   
+  // FIX: Use the correct API response type and extract the campaigns array
+  const { data: campaignsResponse, mutate: mutateCampaigns } = useSWR<CampaignsApiResponse>('/api/campaigns', fetcher);
+  const campaigns = campaignsResponse?.campaigns;
+
   const selectedCampaign = campaigns?.find(c => c.id === selectedCampaignId);
 
   const handleStateChange = useCallback(async (status: 'running' | 'paused' | 'stopped') => {
@@ -92,7 +100,6 @@ export const CampaignEngineManager: React.FC = () => {
       const res = await fetch('/api/engine/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // FIX: Removed `market_region_id` as it's no longer used by the API endpoint.
         body: JSON.stringify({
           campaign_id: selectedCampaign.id,
         }),
@@ -144,7 +151,7 @@ export const CampaignEngineManager: React.FC = () => {
                 className="flex-grow"
             >
                 {(campaigns || []).map((campaign) => (
-                    <SelectItem key={campaign.id}>
+                    <SelectItem key={campaign.id} textValue={campaign.name}>
                         {campaign.name}
                     </SelectItem>
                 ))}
@@ -204,7 +211,8 @@ export const CampaignEngineManager: React.FC = () => {
         onSuccess={() => {
           mutateCampaigns();
           onClose();
-        } } dailyLimit={0} timeWindowHours={0}      />
+        } } dailyLimit={0} timeWindowHours={0}
+      />
     </>
   );
 };
