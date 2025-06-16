@@ -39,24 +39,16 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // This will refresh the session if it's expired
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   const { pathname } = request.nextUrl;
   const loginPath = '/login';
-  
-  // FIX: Check if the user is specifically authenticated, not just if a user object exists.
-  // An unauthenticated user might have an "anonymous" session.
+
   const isAuthenticated = user && user.aud === 'authenticated';
 
-  // If user is not authenticated and the current path is not /login, redirect to /login
   if (!isAuthenticated && pathname !== loginPath) {
     return NextResponse.redirect(new URL(loginPath, request.url));
   }
 
-  // If user is authenticated and the current path is /login, redirect to the home page
   if (isAuthenticated && pathname === loginPath) {
     return NextResponse.redirect(new URL('/', request.url));
   }
