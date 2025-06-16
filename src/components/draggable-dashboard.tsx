@@ -6,13 +6,12 @@ import { Responsive, WidthProvider } from "react-grid-layout";
 import { CampaignChart } from "./campaign-chart";
 import { CampaignConsole } from "./campaign-console";
 import { CampaignStatus } from "./campaign-status";
-import { CampaignEngineManager } from "./campaign-engine-manager"; // Import the new component
+import { CampaignEngineManager } from "./campaign-engine-manager";
 import { TemplatePreview } from "./template-preview";
 import { CampaignSettings } from "./campaign-settings";
 import { LeadsTable } from "./leads-table";
 import { LeadsUpload } from "./leads-upload";
 
-// Fix CSS imports for react-grid-layout
 import "react-grid-layout/css/styles.css";
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
@@ -31,6 +30,7 @@ interface DraggableDashboardProps {
   isPaused: boolean;
   currentCampaign: string;
   isEditMode: boolean;
+  userRole: string; // <-- New prop for role
 }
 
 type LayoutItem = { i: string; x: number; y: number; w: number; h: number };
@@ -41,8 +41,17 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
   isPaused,
   currentCampaign,
   isEditMode,
+  userRole, // <-- Destructure new prop
 }) => {
-  const dashboardItems: DashboardItem[] = [
+  const allDashboardItems: DashboardItem[] = [
+    {
+      i: "leads",
+      title: "Campaign Leads",
+      subtitle: "Manage your campaign leads",
+      component: <LeadsTable />,
+      defaultSize: { w: 4, h: 4 }, 
+      minSize: { w: 4, h: 3 },
+    },
     {
       i: "status",
       title: "Campaign Status",
@@ -60,10 +69,10 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       minSize: { w: 2, h: 2 },
     },
     {
-      i: "engine-manager", // Replaced "emails" with "engine-manager"
+      i: "engine-manager",
       title: "Engine Control",
       subtitle: "Manage campaign state",
-      component: <CampaignEngineManager />, // Use the new component
+      component: <CampaignEngineManager />,
       defaultSize: { w: 1, h: 2 },
       minSize: { w: 1, h: 2 },
     },
@@ -99,15 +108,12 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       defaultSize: { w: 2, h: 2 },
       minSize: { w: 2, h: 2 },
     },
-    {
-      i: "leads",
-      title: "Campaign Leads",
-      subtitle: "Manage your campaign leads",
-      component: <LeadsTable />,
-      defaultSize: { w: 4, h: 4 }, 
-      minSize: { w: 4, h: 3 },
-    },
   ];
+
+  // Filter items based on user role
+  const dashboardItems = userRole === 'superadmin' 
+    ? allDashboardItems 
+    : allDashboardItems.filter(item => item.i === 'leads');
 
   const getFromLS = (key: string): any => {
     let ls: Record<string, any> = {};
@@ -138,7 +144,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       { i: "leads", x: 0, y: 0, w: 4, h: 4 },
       { i: "status", x: 0, y: 4, w: 1, h: 2 },
       { i: "chart", x: 1, y: 4, w: 2, h: 2 },
-      { i: "engine-manager", x: 3, y: 4, w: 1, h: 2 }, // Updated key
+      { i: "engine-manager", x: 3, y: 4, w: 1, h: 2 },
       { i: "console", x: 0, y: 6, w: 2, h: 2 },
       { i: "leads-upload", x: 2, y: 6, w: 2, h: 2 },
       { i: "template", x: 0, y: 8, w: 2, h: 2 },
@@ -148,7 +154,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       { i: "leads", x: 0, y: 0, w: 3, h: 4 },
       { i: "status", x: 0, y: 4, w: 1, h: 2 },
       { i: "chart", x: 1, y: 4, w: 2, h: 2 },
-      { i: "engine-manager", x: 0, y: 6, w: 1, h: 2 }, // Updated key
+      { i: "engine-manager", x: 0, y: 6, w: 1, h: 2 },
       { i: "console", x: 1, y: 6, w: 2, h: 2 },
       { i: "leads-upload", x: 0, y: 8, w: 2, h: 2 },
       { i: "template", x: 0, y: 10, w: 3, h: 2 },
@@ -158,7 +164,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       { i: "leads", x: 0, y: 0, w: 1, h: 4 },
       { i: "status", x: 0, y: 4, w: 1, h: 2 },
       { i: "chart", x: 0, y: 6, w: 1, h: 2 },
-      { i: "engine-manager", x: 0, y: 8, w: 1, h: 2 }, // Updated key
+      { i: "engine-manager", x: 0, y: 8, w: 1, h: 2 },
       { i: "console", x: 0, y: 10, w: 1, h: 2 },
       { i: "leads-upload", x: 0, y: 12, w: 1, h: 2 },
       { i: "template", x: 0, y: 14, w: 1, h: 2 },
@@ -185,7 +191,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
 
   return (
     <div className="relative">
-      {isEditMode && (
+      {isEditMode && userRole === 'superadmin' && (
         <div className="mb-4 flex items-center justify-between rounded-lg bg-content2 p-3">
           <div className="flex items-center gap-2">
             <Icon icon="lucide:move" className="text-primary" />
@@ -205,8 +211,8 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
         breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
         cols={{ lg: 4, md: 3, sm: 1, xs: 1, xxs: 1 }}
         rowHeight={150}
-        isDraggable={isEditMode}
-        isResizable={isEditMode}
+        isDraggable={isEditMode && userRole === 'superadmin'}
+        isResizable={isEditMode && userRole === 'superadmin'}
         onLayoutChange={handleLayoutChange}
         margin={[16, 16]}
         measureBeforeMount={false}
@@ -215,7 +221,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
         {dashboardItems.map((item) => (
           <div key={item.i}>
             <Card className="h-full transition-all duration-200">
-              {isEditMode && (
+              {isEditMode && userRole === 'superadmin' && (
                 <div className="absolute left-0 right-0 top-0 z-10 flex h-full w-full cursor-move items-center justify-center rounded-lg bg-foreground/5 opacity-0 transition-opacity hover:opacity-100">
                   <div className="rounded-lg bg-foreground/80 p-2 text-background">
                     <Icon icon="lucide:move" width={24} height={24} />
