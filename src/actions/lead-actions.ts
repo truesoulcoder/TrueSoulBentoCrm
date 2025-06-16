@@ -29,17 +29,30 @@ async function invalidateLeadCaches(propertyId?: string) {
       keysToDel.push(`lead:details:${propertyId}`);
     }
 
-    // Find and add all list-based cache keys to the deletion list
-    const leadListKeys = await redis.keys('leads:*');
-    const regionListKeys = await redis.keys('market_regions:*');
+    // Add specific, known list cache keys
+    keysToDel.push('leads:region:all:search:none');
 
-    const allKeys = [...keysToDel, ...leadListKeys, ...regionListKeys];
+    // Fetch market regions and add their cache keys
+    const supabase = await createAdminServerClient();
+    const { data: regions, error: regionsError } = await supabase
+      .from('market_regions')
+      .select('name');
+
+    if (regionsError) {
+      console.error('Failed to fetch market regions for cache invalidation:', regionsError);
+    } else if (regions) {
+      regions.forEach(region => {
+        if (region.name) {
+          keysToDel.push(`leads:region:${region.name}:search:none`);
+        }
+      });
+    }
     
     // Use a Set to ensure we only delete unique keys
-    const uniqueKeys = [...new Set(allKeys)];
+    const uniqueKeys = [...new Set(keysToDel)];
 
     if (uniqueKeys.length > 0) {
-      console.log('[CACHE INVALIDATION] Deleting keys:', uniqueKeys);
+      console.log('[CACHE INVALIDATION] Deleting specific keys:', uniqueKeys);
       await redis.del(uniqueKeys);
     }
   } catch (error) {
