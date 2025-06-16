@@ -9,7 +9,7 @@ const CACHE_KEY = 'market_regions:active';
 const CACHE_TTL_SECONDS = 600; // Cache for 10 minutes
 
 export async function GET() {
-  // Resilient Caching Block
+  // --- Resilient Caching Read Block ---
   try {
     const cachedData = await redis.get(CACHE_KEY);
     if (cachedData) {
@@ -34,7 +34,7 @@ export async function GET() {
       throw new Error(error.message);
     }
     
-    // Attempt to set cache, but don't let it fail the request
+    // --- Resilient Caching Write Block ---
     try {
       if(data) {
         await redis.set(CACHE_KEY, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
