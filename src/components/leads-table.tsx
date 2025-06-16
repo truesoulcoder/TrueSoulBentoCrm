@@ -27,8 +27,12 @@ import {
 import type { Database } from "@/types/supabase";
 import LeadModal from "./lead-modal";
 
-type LeadData = Database['public']['Views']['properties_with_contacts']['Row'];
+type LeadData = Database['public']['Tables']['crm_leads']['Row'];
 type MarketRegion = { id: string; name: string };
+
+interface LeadsTableProps {
+  leads?: LeadData[]; // Optional leads prop
+}
 
 const fetcher = (url: string) => fetch(url).then(res => {
   if (!res.ok) {
@@ -73,15 +77,21 @@ const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "wa
   "Closed - Not Converted/Opportunity Lost": "danger",
 };
 
-export const LeadsTable: React.FC = () => {
+export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
   const [filterValue, setFilterValue] = React.useState("");
   const [debouncedFilterValue, setDebouncedFilterValue] = React.useState("");
   const [regionFilter, setRegionFilter] = React.useState("all");
 
-  const { data: leads, error, isLoading, mutate } = useSWR<LeadData[]>(
-    `/api/leads?search=${debouncedFilterValue}&region=${regionFilter}`,
+  const shouldFetchInternally = !propLeads;
+
+  const { data: fetchedLeads, error: swrError, isLoading: swrIsLoading, mutate } = useSWR<LeadData[]>(
+    shouldFetchInternally ? `/api/leads?search=${debouncedFilterValue}&region=${regionFilter}` : null,
     fetcher
   );
+
+  const leadsToDisplay = propLeads || fetchedLeads;
+  const currentError = shouldFetchInternally ? swrError : null;
+  const currentIsLoading = shouldFetchInternally ? swrIsLoading : false;
 
   const { data: marketRegions, isLoading: isLoadingRegions } = useSWR<MarketRegion[]>('/api/market-regions', fetcher);
 
@@ -111,7 +121,7 @@ export const LeadsTable: React.FC = () => {
   const items = React.useMemo(() => {
     const start = (page - 1) * rowsPerPage;
     const end = start + rowsPerPage;
-    const itemsToProcess = leads || [];
+    const itemsToProcess = leadsToDisplay || [];
 
     const sortedLeads = [...itemsToProcess].sort((a, b) => {
       const first = a[sortDescriptor.column as keyof LeadData];
@@ -126,39 +136,29 @@ export const LeadsTable: React.FC = () => {
     });
 
     return sortedLeads.slice(start, end);
-  }, [page, leads, rowsPerPage, sortDescriptor]);
+  }, [page, leadsToDisplay, rowsPerPage, sortDescriptor]);
 
   const onSearchChange = React.useCallback((value?: string) => {
     setFilterValue(value || "");
     setPage(1);
   }, []);
   
-  // Define the Selection type to match NextUI/HeroUI's typical signature for onSelectionChange callbacks
   type ComponentSelection = Set<React.Key> | "all";
 
   const onRegionChange = React.useCallback((keys: ComponentSelection) => {
-    let newRegionFilter = "all"; // Default to "all"
+    let newRegionFilter = "all"; 
 
     if (keys instanceof Set) {
-      // This is the expected path for a single-select Select.
-      // `keys` will be a Set containing the key of the selected item,
-      // e.g., new Set(["all"]) for the "All Regions" item, or new Set(["someRegionName"]).
-      // Or an empty Set if the selection is cleared (if the Select component allows this).
       if (keys.size > 0) {
-        const selectedKey = Array.from(keys)[0]; // Get the first (and only) key from the Set
+        const selectedKey = Array.from(keys)[0]; 
         newRegionFilter = String(selectedKey);
       }
-      // If keys.size is 0 (selection cleared), newRegionFilter remains "all" (our chosen default).
     } else if (typeof keys === 'string' && keys === 'all') {
-      // This branch handles the literal 'all' string case from the ComponentSelection type.
-      // For this specific single-select Select component where "all" is an item key,
-      // this path is less likely to be taken (it would receive new Set(["all"]) instead).
-      // Including this handles the type definition exhaustively.
       newRegionFilter = "all";
     }
 
     setRegionFilter(newRegionFilter);
-    setPage(1); // Reset page when the filter changes
+    setPage(1); 
   }, [setRegionFilter, setPage]);
 
   const onClear = React.useCallback(() => {
@@ -182,8 +182,10 @@ export const LeadsTable: React.FC = () => {
   };
   
   const handleSaveSuccess = () => {
+    if (shouldFetchInternally && mutate) {
       mutate();
-      handleCloseModal();
+    }
+    handleCloseModal();
   };
 
   const renderCell = React.useCallback((lead: LeadData, columnKey: React.Key) => {
@@ -202,11 +204,9 @@ export const LeadsTable: React.FC = () => {
               <div key={index}>
                 <div className="flex justify-between items-center font-medium">
                   <span className="truncate">{name || 'N/A'}</span>
-                  {/* FIX: Explicitly cast the index to a number to satisfy TypeScript */}
-                  <span className="text-default-500 ml-2 whitespace-nowrap">{phones[Number(index)] || ''}</span>
+                  <span className="text-default-500 ml-2 whitespace-nowrap">{phones[index] || ''}</span>
                 </div>
-                {/* FIX: Explicitly cast the index to a number here as well */}
-                <div className="text-default-600 truncate">{emails[Number(index)] || ''}</div>
+                <div className="text-default-600 truncate">{emails[index] || ''}</div>
               </div>
             ))}
           </div>
@@ -269,13 +269,13 @@ export const LeadsTable: React.FC = () => {
             </Button>
           </div>
         </div>
-        <span className="text-default-400 text-small">Total {leads?.length || 0} leads found</span>
+        <span className="text-default-400 text-small">Total {leadsToDisplay?.length || 0} leads found</span>
       </div>
     );
-  }, [filterValue, onSearchChange, onClear, handleAddLead, leads?.length, regionFilter, onRegionChange, marketRegions]);
+  }, [filterValue, onSearchChange, onClear, handleAddLead, leadsToDisplay?.length, regionFilter, onRegionChange, marketRegions]);
 
   const bottomContent = React.useMemo(() => {
-    const totalPages = leads ? Math.ceil(leads.length / rowsPerPage) : 0;
+    const totalPages = leadsToDisplay ? Math.ceil(leadsToDisplay.length / rowsPerPage) : 0;
     return (
       <div className="sticky bottom-0 z-20 bg-content1 p-4 border-t border-divider flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-2">
@@ -323,7 +323,7 @@ export const LeadsTable: React.FC = () => {
         </div>
       </div>
     );
-  }, [page, leads?.length, rowsPerPage]);
+  }, [page, leadsToDisplay?.length, rowsPerPage]);
 
   return (
     <>
@@ -360,9 +360,9 @@ export const LeadsTable: React.FC = () => {
           </TableHeader>
           <TableBody
             items={items}
-            isLoading={(isLoading || isLoadingRegions) && !leads}
+            isLoading={(currentIsLoading || isLoadingRegions) && !leadsToDisplay}
             loadingContent={<Spinner label="Loading leads..." />}
-            emptyContent={debouncedFilterValue ? "No leads found matching your search." : "No leads to display."}
+            emptyContent={currentError ? "Error loading leads." : (debouncedFilterValue ? "No leads found matching your search." : "No leads to display.")}
           >
             {(item) => (
               <TableRow key={item.property_id} onClick={() => handleEditLead(item.property_id!)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-100">

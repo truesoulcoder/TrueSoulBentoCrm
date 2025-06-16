@@ -1,6 +1,6 @@
 'use client'
 
-import { Campaign, Lead } from '@/types'
+import type { Database } from '@/types/supabase';
 import {
   DndContext,
   closestCenter,
@@ -22,6 +22,10 @@ import { CampaignSettings } from './campaign-settings'
 import { TemplatePreview } from './template-preview'
 import { EmailSelector } from './email-selector'
 import { CampaignConsole } from './campaign-console'
+
+// Define types based on Supabase schema
+type Campaign = Database['public']['Tables']['campaigns']['Row'];
+type Lead = Database['public']['Tables']['crm_leads']['Row'];
 
 export function CampaignDashboard({ leads }: { leads: Lead[] }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
