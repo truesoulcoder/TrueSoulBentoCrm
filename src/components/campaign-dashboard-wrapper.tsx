@@ -8,7 +8,12 @@ import { Button } from '@heroui/react';
 import { Icon } from '@iconify/react';
 import { DraggableDashboard } from './draggable-dashboard';
 import { signOut } from '@/actions/auth';
+import type { Database } from '@/types/supabase';
 
+// FIX: Define and export the LeadWithProperties type.
+export type LeadWithProperties = Database['public']['Tables']['campaign_leads']['Row'] & {
+  properties?: Database['public']['Tables']['properties']['Row'] | null;
+};
 
 export function CampaignDashboardWrapper({
   userRole,
@@ -20,7 +25,6 @@ export function CampaignDashboardWrapper({
   const router = useRouter();
 
   // Placeholder state for the dashboard props.
-  // In a real application, this might come from a global state manager or context.
   const [isRunning, setIsRunning] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [currentCampaign, setCurrentCampaign] = useState("Q2 Investor Outreach");
