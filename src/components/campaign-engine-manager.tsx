@@ -25,12 +25,6 @@ type EngineState = {
   updated_at: string;
 };
 
-// Type for a market region
-type MarketRegion = {
-  id: string;
-  name: string;
-};
-
 // Type for a campaign
 type Campaign = {
   id: string;
@@ -98,9 +92,9 @@ export const CampaignEngineManager: React.FC = () => {
       const res = await fetch('/api/engine/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // FIX: Removed `market_region_id` as it's no longer used by the API endpoint.
         body: JSON.stringify({
           campaign_id: selectedCampaign.id,
-          market_region_id: selectedCampaign.market_region_id,
         }),
       });
 

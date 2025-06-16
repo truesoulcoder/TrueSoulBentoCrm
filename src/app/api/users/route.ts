@@ -8,15 +8,14 @@ import type { Database } from '@/types/supabase';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  // FIX: Await the cookies() promise here to get the cookie store object.
-  const cookieStore = await cookies();
+  const cookieStore = cookies();
 
+  // FIX: Correctly initialize the Supabase client for Route Handlers
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        // The handlers now use the resolved cookieStore object synchronously.
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
@@ -41,10 +40,12 @@ export async function GET() {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     
+    // This role check is the source of the 403. It will now work correctly.
     if (!session || (session.user.user_metadata?.user_role as string) !== 'superadmin') {
         return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
 
+    // If authorized, use the admin client to fetch all profiles.
     const adminSupabase = await createAdminServerClient();
     const { data: profiles, error: profilesError } = await adminSupabase
       .from('profiles')

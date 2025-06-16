@@ -18,71 +18,46 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          // If the cookie is set, update the request's cookies.
-          request.cookies.set({
-            name,
-            value,
-            ...options,
-          });
-          // Also update the response's cookies.
+          request.cookies.set({ name, value, ...options });
           response = NextResponse.next({
             request: {
               headers: request.headers,
             },
           });
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          });
+          response.cookies.set({ name, value, ...options });
         },
         remove(name: string, options: CookieOptions) {
-          // If the cookie is removed, update the request's cookies.
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          });
-          // Also update the response's cookies.
+          request.cookies.set({ name, value: '', ...options });
           response = NextResponse.next({
             request: {
               headers: request.headers,
             },
           });
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          });
+          response.cookies.set({ name, value: '', ...options });
         },
       },
     }
   );
 
-  // Refresh session if expired - this will set cookies if necessary
-  const { data: { user } } = await supabase.auth.getUser();
+  // This will refresh the session if it's expired
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
   const loginPath = '/login';
+  
+  // FIX: Check if the user is specifically authenticated, not just if a user object exists.
+  // An unauthenticated user might have an "anonymous" session.
+  const isAuthenticated = user && user.aud === 'authenticated';
 
-  // --- DIAGNOSTIC LOGS ---
-  console.log(`[Middleware] Path: ${pathname}`);
-  if (user) {
-    console.log(`[Middleware] User found: ${user.id}`);
-  } else {
-    console.log('[Middleware] No user found.');
-  }
-  // -----------------------
-
-  // If no user is found and they are not on the login page, redirect them.
-  if (!user && pathname !== loginPath) {
-    console.log('[Middleware] Redirecting to login page.');
+  // If user is not authenticated and the current path is not /login, redirect to /login
+  if (!isAuthenticated && pathname !== loginPath) {
     return NextResponse.redirect(new URL(loginPath, request.url));
   }
 
-  // If a user is found and they are trying to access the login page, redirect to home.
-  if (user && pathname === loginPath) {
-    console.log('[Middleware] User is logged in, redirecting to dashboard.');
+  // If user is authenticated and the current path is /login, redirect to the home page
+  if (isAuthenticated && pathname === loginPath) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
@@ -94,12 +69,11 @@ export const config = {
     /*
      * Match all request paths except for the ones starting with:
      * - api (API routes)
+     * - auth (all auth routes)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - public (public files)
-     * - auth/callback (the OAuth callback route)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|public|auth/callback).*)',
+    '/((?!api|auth|_next/static|_next/image|favicon.ico).*)',
   ],
 };

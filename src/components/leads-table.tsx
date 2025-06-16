@@ -83,12 +83,7 @@ export const LeadsTable: React.FC = () => {
     fetcher
   );
 
-  const { data: marketRegions, error: regionsError, isLoading: isLoadingRegions } = useSWR<MarketRegion[]>('/api/market-regions', fetcher);
-
-  const regionSelectItems = React.useMemo(() => [
-    { key: "all", name: "All Regions" },
-    ...(marketRegions || []).map(region => ({ key: region.id, name: region.name })) // Assuming region.id should be the key
-  ], [marketRegions]);
+  const { data: marketRegions, isLoading: isLoadingRegions } = useSWR<MarketRegion[]>('/api/market-regions', fetcher);
 
   React.useEffect(() => {
     const handler = setTimeout(() => {
@@ -207,9 +202,11 @@ export const LeadsTable: React.FC = () => {
               <div key={index}>
                 <div className="flex justify-between items-center font-medium">
                   <span className="truncate">{name || 'N/A'}</span>
-                  <span className="text-default-500 ml-2 whitespace-nowrap">{phones[index] || ''}</span>
+                  {/* FIX: Explicitly cast the index to a number to satisfy TypeScript */}
+                  <span className="text-default-500 ml-2 whitespace-nowrap">{phones[Number(index)] || ''}</span>
                 </div>
-                <div className="text-default-600 truncate">{emails[index] || ''}</div>
+                {/* FIX: Explicitly cast the index to a number here as well */}
+                <div className="text-default-600 truncate">{emails[Number(index)] || ''}</div>
               </div>
             ))}
           </div>
@@ -254,7 +251,10 @@ export const LeadsTable: React.FC = () => {
               selectedKeys={[regionFilter]} 
               onSelectionChange={onRegionChange} 
               className="w-full md:max-w-xs"
-              items={regionSelectItems} // Use the hoisted memoized value
+              items={React.useMemo(() => [
+                { key: "all", name: "All Regions" }, 
+                ...(marketRegions || []).map(region => ({ key: region.name, name: region.name })) 
+              ], [marketRegions])}
             >
               {(item) => ( 
                 <SelectItem key={item.key} textValue={item.name}>
@@ -272,7 +272,7 @@ export const LeadsTable: React.FC = () => {
         <span className="text-default-400 text-small">Total {leads?.length || 0} leads found</span>
       </div>
     );
-  }, [filterValue, onSearchChange, onClear, handleAddLead, leads?.length, regionFilter, onRegionChange, regionSelectItems]);
+  }, [filterValue, onSearchChange, onClear, handleAddLead, leads?.length, regionFilter, onRegionChange, marketRegions]);
 
   const bottomContent = React.useMemo(() => {
     const totalPages = leads ? Math.ceil(leads.length / rowsPerPage) : 0;
