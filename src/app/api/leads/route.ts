@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
   const cacheKey = `leads:region:${region}:search:${search || 'none'}`;
 
-  // --- Resilient Caching Block ---
+  // Resilient Caching Block
   try {
     const cachedData = await redis.get(cacheKey);
     if (cachedData) {
@@ -40,37 +40,37 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createClient<Database>(supabaseUrl, serviceKey);
     
-    let query;
-    if (search) {
-      query = supabase.rpc('search_properties_with_contacts', { search_term: search });
-    } else {
-      query = supabase.from('properties_with_contacts').select('*');
-    }
-
-    if (region && region !== 'all') {
-      query = query.eq('market_region', region);
-    }
-    
-    query = query.order('created_at', { ascending: false }).limit(1000);
-
-    const { data, error } = await query;
+    // FIX: Switched from the slow view query to the optimized RPC function
+    // to prevent the 504 Gateway Timeout. We now use the RPC for all queries.
+    const { data, error } = await supabase.rpc('search_properties_with_contacts', { 
+      search_term: search 
+    });
 
     if (error) {
-      console.error('Supabase client error fetching leads:', { message: error.message, details: error.details });
-      throw new Error(`Failed to fetch leads: ${error.message}`);
+      console.error('Supabase RPC error fetching leads:', { message: error.message, details: error.details });
+      throw new Error(`Failed to fetch leads via RPC: ${error.message}`);
     }
 
-    // --- Resilient Cache Write ---
+    let finalData = data || [];
+
+    // Since RPC calls cannot be chained, we filter by region here in the code.
+    if (region && region !== 'all') {
+      finalData = finalData.filter((lead: any) => lead.market_region === region);
+    }
+    
+    // Note: Server-side sorting is omitted as the client-side component handles it.
+
+    // Attempt to set cache, but don't let it fail the request
     try {
-      if (data) {
-        await redis.set(cacheKey, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
+      if (finalData) {
+        await redis.set(cacheKey, JSON.stringify(finalData), 'EX', CACHE_TTL_SECONDS);
         console.log(`[CACHE SET] Stored data for key: ${cacheKey}`);
       }
     } catch (cacheError) {
       console.error(`[LEADS CACHE WRITE ERROR] Could not write to cache for key ${cacheKey}.`, cacheError);
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json(finalData);
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
