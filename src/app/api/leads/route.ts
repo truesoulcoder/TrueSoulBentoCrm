@@ -1,7 +1,6 @@
 // src/app/api/leads/route.ts
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import type { Database } from '@/types/supabase';
 import redis from '@/lib/redis';
 
 export const dynamic = 'force-dynamic';
@@ -13,9 +12,11 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get('search') || '';
   const region = searchParams.get('region') || 'all';
 
-  const cacheKey = `leads:region:${region}:search:${search || 'none'}`;
+  // Use a versioned cache key to easily invalidate old caches
+  const cacheKey = `leads:v2:region:${region}:search:${search || 'none'}`;
 
-  // Resilient Caching Block
+  // --- Resilient Caching Read Block ---
+  // Tries to get data from cache, but falls back to DB if Redis fails
   try {
     const cachedData = await redis.get(cacheKey);
     if (cachedData) {
@@ -32,34 +33,41 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     
-    // Revert to using the RPC function, which we will optimize at the database level.
-    const { data, error } = await supabase.rpc('search_properties_with_contacts', { 
-      search_term: search 
-    });
+    // FIX: Build the query dynamically for efficiency instead of using an RPC call.
+    // This allows the database to do the filtering, which is much faster.
+    let query = supabase.from('properties_with_contacts').select('*');
 
-    if (error) {
-      console.error('Supabase RPC error fetching leads:', { message: error.message, details: error.details });
-      throw new Error(`Failed to fetch leads via RPC: ${error.message}`);
-    }
-
-    let finalData = data || [];
-
-    // Since RPC calls cannot be chained, we filter by region here in the code.
+    // 1. Filter by region at the database level
     if (region && region !== 'all') {
-      finalData = finalData.filter((lead: any) => lead.market_region === region);
+      query = query.eq('market_region', region);
     }
     
-    // Attempt to set cache, but don't let it fail the request
+    // 2. Add text search at the database level
+    if (search) {
+      // Use .or() to search across multiple relevant columns
+      query = query.or(
+        `contact_names.ilike.%${search}%,property_address.ilike.%${search}%,contact_emails.ilike.%${search}%,property_city.ilike.%${search}%`
+      );
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Supabase query error fetching leads:', { message: error.message, details: error.details });
+      throw new Error(`Failed to fetch leads: ${error.message}`);
+    }
+
+    // Attempt to set cache, but don't fail the request if Redis is down.
     try {
-      if (finalData) {
-        await redis.set(cacheKey, JSON.stringify(finalData), 'EX', CACHE_TTL_SECONDS);
+      if (data) {
+        await redis.set(cacheKey, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
         console.log(`[CACHE SET] Stored data for key: ${cacheKey}`);
       }
     } catch (cacheError) {
       console.error(`[LEADS CACHE WRITE ERROR] Could not write to cache for key ${cacheKey}.`, cacheError);
     }
 
-    return NextResponse.json(finalData);
+    return NextResponse.json(data || []);
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';

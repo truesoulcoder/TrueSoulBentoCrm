@@ -1,6 +1,6 @@
 // src/app/api/users/route.ts
 import { createAdminServerClient } from '@/lib/supabase/server';
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { Database } from '@/types/supabase';
@@ -8,8 +8,7 @@ import type { Database } from '@/types/supabase';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  // FIX: Await the cookies() call to get the resolved cookie store.
-  const cookieStore = await cookies();
+  const cookieStore = cookies();
 
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,29 +18,17 @@ export async function GET() {
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
-        set(name: string, value: string, options: CookieOptions) {
-          try {
-            cookieStore.set({ name, value, ...options });
-          } catch (error) {
-            // This can happen in read-only Server Components.
-          }
-        },
-        remove(name: string, options: CookieOptions) {
-          try {
-            cookieStore.set({ name, value: '', ...options });
-          } catch (error) {
-            // This can happen in read-only Server Components.
-          }
-        },
+        set() { /* Read-only in this context */ },
+        remove() { /* Read-only in this context */ },
       },
     }
   );
 
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    // FIX: Use getUser() to securely validate the user's session and role.
+    const { data: { user } } = await supabase.auth.getUser();
     
-    // The role check for 'superadmin' will now work correctly.
-    if (!session || (session.user.user_metadata?.user_role as string) !== 'superadmin') {
+    if (!user || (user.user_metadata?.user_role as string) !== 'superadmin') {
         return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
 
