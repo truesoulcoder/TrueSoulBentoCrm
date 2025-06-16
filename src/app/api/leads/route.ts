@@ -1,5 +1,5 @@
 // src/app/api/leads/route.ts
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import type { Database } from '@/types/supabase';
 import redis from '@/lib/redis';
@@ -29,19 +29,10 @@ export async function GET(request: NextRequest) {
   // --- Database as the Source of Truth ---
   console.log(`[CACHE MISS] Fetching from database: ${cacheKey}`);
   
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceKey) {
-    console.error("CRITICAL: Supabase URL or Service Key is not defined in your .env.local file.");
-    return NextResponse.json({ error: "Server configuration error: Missing Supabase credentials." }, { status: 500 });
-  }
-
   try {
-    const supabase = createClient<Database>(supabaseUrl, serviceKey);
+    const supabase = await createClient();
     
-    // FIX: Switched from the slow view query to the optimized RPC function
-    // to prevent the 504 Gateway Timeout. We now use the RPC for all queries.
+    // Revert to using the RPC function, which we will optimize at the database level.
     const { data, error } = await supabase.rpc('search_properties_with_contacts', { 
       search_term: search 
     });
@@ -58,8 +49,6 @@ export async function GET(request: NextRequest) {
       finalData = finalData.filter((lead: any) => lead.market_region === region);
     }
     
-    // Note: Server-side sorting is omitted as the client-side component handles it.
-
     // Attempt to set cache, but don't let it fail the request
     try {
       if (finalData) {
