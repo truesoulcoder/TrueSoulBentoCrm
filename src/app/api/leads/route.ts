@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
   const cacheKey = `leads:region:${region}:search:${search || 'none'}`;
 
-  // Resilient Caching Block
+  // --- Resilient Caching Block ---
   try {
     const cachedData = await redis.get(cacheKey);
     if (cachedData) {
@@ -40,8 +40,6 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createClient<Database>(supabaseUrl, serviceKey);
     
-    // FIX: Switched from manual query builder to the optimized RPC function
-    // for significantly better performance, which avoids the 504 Gateway Timeout.
     let query;
     if (search) {
       // Use the dedicated search function when a search term is provided
@@ -55,7 +53,6 @@ export async function GET(request: NextRequest) {
       query = query.eq('market_region', region);
     }
     
-    // Apply ordering and limit after selecting the base query
     query = query.order('created_at', { ascending: false }).limit(1000);
 
     const { data, error } = await query;
@@ -65,7 +62,7 @@ export async function GET(request: NextRequest) {
       throw new Error(`Failed to fetch leads: ${error.message}`);
     }
 
-    // Attempt to set cache, but don't let it fail the request
+    // --- Resilient Cache Write ---
     try {
       if (data) {
         await redis.set(cacheKey, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
