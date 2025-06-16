@@ -1,7 +1,6 @@
 // src/components/campaign-dashboard.tsx
 'use client'
 
-import type { Database } from '@/types/supabase';
 import {
   DndContext,
   closestCenter,
@@ -23,7 +22,7 @@ import { CampaignSettings } from './campaign-settings'
 import { TemplatePreview } from './template-preview'
 import { EmailSelector } from './email-selector'
 import { CampaignConsole } from './campaign-console'
-import type { Database } from '@/types/supabase';
+import { Database } from '@/types'
 
 // Define types based on Supabase schema
 type Campaign = Database['public']['Tables']['campaigns']['Row'];
