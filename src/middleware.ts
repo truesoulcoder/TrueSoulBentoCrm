@@ -45,8 +45,8 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // If user is not signed in and is not on a public route, redirect to login.
-  if (!session && pathname !== '/login' && !pathname.startsWith('/auth/callback')) {
+  // If user is not signed in and is not on the login page, redirect to login.
+  if (!session && pathname !== '/login') {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
@@ -70,7 +70,8 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - api/auth/google (the google oauth initiation route)
+     * - auth/callback (the oauth callback route)
      */
-    '/((?!_next/static|_next/image|favicon.ico|favicon-light.svg|api/auth/google).*)',
+    '/((?!_next/static|_next/image|favicon.ico|favicon-light.svg|api/auth/google|auth/callback).*)',
   ],
 };
