@@ -27,13 +27,18 @@ import {
 import type { Database } from "@/types/supabase";
 import LeadModal from "./lead-modal";
 
-type LeadData = Database['public']['Tables']['crm_leads']['Row'];
+// TYPE DEFINITIONS
+type LeadData = Database['public']['Tables']['campaign_leads']['Row'] & {
+  properties?: Database['public']['Tables']['properties']['Row'] | null;
+};
+
 type MarketRegion = { id: string; name: string };
 
 interface LeadsTableProps {
   leads?: LeadData[]; // Optional leads prop
 }
 
+// HELPER FUNCTIONS
 const fetcher = (url: string) => fetch(url).then(res => {
   if (!res.ok) {
     const error = new Error('An error occurred while fetching the data.');
@@ -52,15 +57,25 @@ const formatCurrency = (value: number | null | undefined) => {
   }).format(value);
 };
 
+// New helper to safely access nested properties
+const getCellValue = (lead: LeadData, key: string): any => {
+    if (key.startsWith('properties.')) {
+        const propKey = key.substring(11); // "properties.".length
+        return lead.properties?.[propKey as keyof typeof lead.properties];
+    }
+    return lead[key as keyof LeadData];
+}
+
+// TABLE CONFIGURATION
 const columns = [
-  { name: "STATUS", uid: "status", sortable: true, className: "" },
-  { name: "CONTACTS", uid: "contact_names", sortable: true, className: "" },
-  { name: "ADDRESS", uid: "property_address", sortable: true, className: "hidden sm:table-cell" },
-  { name: "REGION", uid: "market_region", sortable: true, className: "hidden md:table-cell" },
-  { name: "MARKET VALUE", uid: "market_value", sortable: true, className: "" },
-  { name: "TYPE", uid: "property_type", sortable: true, className: "hidden lg:table-cell" },
-  { name: "LIST PRICE", uid: "mls_list_price", sortable: true, className: "hidden lg:table-cell" },
-  { name: "DOM", uid: "mls_days_on_market", sortable: true, className: "hidden md:table-cell" },
+  { name: "STATUS", uid: "status", sortable: true },
+  { name: "CONTACTS", uid: "contact_name", sortable: true },
+  { name: "ADDRESS", uid: "properties.property_address", sortable: true },
+  { name: "REGION", uid: "properties.market_region", sortable: true },
+  { name: "MARKET VALUE", uid: "properties.market_value", sortable: true },
+  { name: "TYPE", uid: "properties.property_type", sortable: true },
+  { name: "LIST PRICE", uid: "properties.mls_list_price", sortable: true },
+  { name: "DOM", uid: "properties.mls_days_on_market", sortable: true },
 ];
 
 const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "warning" | "danger" | "default" } = {
@@ -77,6 +92,7 @@ const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "wa
   "Closed - Not Converted/Opportunity Lost": "danger",
 };
 
+// MAIN COMPONENT
 export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
   const [filterValue, setFilterValue] = React.useState("");
   const [debouncedFilterValue, setDebouncedFilterValue] = React.useState("");
@@ -112,7 +128,7 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
 
   const [sortDescriptor, setSortDescriptor] = React.useState({
-    column: "market_value",
+    column: "properties.market_value",
     direction: "descending" as "ascending" | "descending",
   });
 
@@ -124,8 +140,8 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
     const itemsToProcess = leadsToDisplay || [];
 
     const sortedLeads = [...itemsToProcess].sort((a, b) => {
-      const first = a[sortDescriptor.column as keyof LeadData];
-      const second = b[sortDescriptor.column as keyof LeadData];
+      const first = getCellValue(a, sortDescriptor.column);
+      const second = getCellValue(b, sortDescriptor.column);
 
       if (first == null && second == null) return 0;
       if (first == null) return 1;
@@ -161,6 +177,7 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
     setPage(1); 
   }, [setRegionFilter, setPage]);
 
+
   const onClear = React.useCallback(() => {
     setFilterValue("");
     setPage(1);
@@ -171,9 +188,15 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
     onOpen();
   }, [onOpen]);
 
-  const handleEditLead = React.useCallback((propertyId: string) => {
-    setSelectedPropertyId(propertyId);
-    onOpen();
+  const handleEditLead = React.useCallback((lead: LeadData) => {
+    // We need the property_id from the nested properties object
+    const propId = lead.properties?.property_id;
+    if (propId) {
+        setSelectedPropertyId(propId);
+        onOpen();
+    } else {
+        console.error("Cannot edit lead: property_id is missing.", lead);
+    }
   }, [onOpen]);
   
   const handleCloseModal = () => {
@@ -189,44 +212,43 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
   };
 
   const renderCell = React.useCallback((lead: LeadData, columnKey: React.Key) => {
+    const value = getCellValue(lead, columnKey as string);
+
     switch (columnKey) {
       case "status":
-        const statusKey = lead.status as keyof typeof statusColorMap;
-        return <Chip className="capitalize" color={statusColorMap[statusKey] || "default"} size="sm" variant="flat">{lead.status || "N/A"}</Chip>;
-      case "contact_names":
-        const names = lead.contact_names?.split(',').map(n => n.trim()) || [];
-        const phones = lead.contact_phones?.split(',').map(p => p.trim()) || [];
-        const emails = lead.contact_emails?.split(',').map(e => e.trim()) || [];
-        if (names.length === 0 || names.every(name => !name)) return "No Contacts";
+        const statusKey = value as keyof typeof statusColorMap;
+        return <Chip className="capitalize" color={statusColorMap[statusKey] || "default"} size="sm" variant="flat">{value || "N/A"}</Chip>;
+
+      case "contact_name":
         return (
-          <div className="text-xs space-y-2">
-            {names.map((name, index) => (
-              <div key={index}>
-                <div className="flex justify-between items-center font-medium">
-                  <span className="truncate">{name || 'N/A'}</span>
-                  <span className="text-default-500 ml-2 whitespace-nowrap">{phones[index] || ''}</span>
-                </div>
-                <div className="text-default-600 truncate">{emails[index] || ''}</div>
-              </div>
-            ))}
+          <div className="text-xs">
+            <div className="flex justify-between items-center font-medium">
+              <span className="truncate">{value || 'N/A'}</span>
+            </div>
+            <div className="text-default-600 truncate">{lead.contact_email || 'No Email'}</div>
           </div>
         );
-      case "property_address":
+
+      case "properties.property_address":
+        const property = lead.properties;
+        if (!property) return "N/A";
         return (
           <div className="flex items-center gap-2">
             <Icon icon="mdi:map-marker" className="text-red-500 w-5 h-5 flex-shrink-0" />
             <div>
-              <div className="font-medium">{lead.property_address}</div>
-              <div className="text-xs text-default-500">{`${lead.property_city}, ${lead.property_state} ${lead.property_postal_code}`}</div>
+              <div className="font-medium">{property.property_address || 'N/A'}</div>
+              <div className="text-xs text-default-500">
+                {`${property.property_city || ''}, ${property.property_state || ''} ${property.property_postal_code || ''}`}
+              </div>
             </div>
           </div>
         );
-      case "market_value":
-        return formatCurrency(lead.market_value);
-      case "mls_list_price":
-        return formatCurrency(lead.mls_list_price);
+      
+      case "properties.market_value":
+      case "properties.mls_list_price":
+        return formatCurrency(value);
+
       default:
-        const value = lead[columnKey as keyof LeadData];
         return value === null || value === undefined ? "N/A" : String(value);
     }
   }, []);
@@ -352,7 +374,6 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
                 key={column.uid} 
                 align="start"
                 allowsSorting={column.sortable}
-                className={column.className}
               >
                 {column.name}
               </TableColumn>
@@ -365,9 +386,9 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
             emptyContent={currentError ? "Error loading leads." : (debouncedFilterValue ? "No leads found matching your search." : "No leads to display.")}
           >
             {(item) => (
-              <TableRow key={item.property_id} onClick={() => handleEditLead(item.property_id!)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-100">
+              <TableRow key={item.id} onClick={() => handleEditLead(item)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-100">
                 {(columnKey) => (
-                  <TableCell className={columns.find(c => c.uid === columnKey)?.className}>
+                  <TableCell>
                     {renderCell(item, columnKey)}
                   </TableCell>
                 )}
