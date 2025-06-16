@@ -90,7 +90,7 @@ const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "wa
 export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
   const [filterValue, setFilterValue] = React.useState("");
   const [debouncedFilterValue, setDebouncedFilterValue] = React.useState("");
-  const [regionFilter, setRegionFilter] = React.useState<React.Key>("all");
+  const [regionFilter, setRegionFilter] = React.useState<string>("all");
 
   const shouldFetchInternally = !propLeads;
 
@@ -153,10 +153,10 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
     setPage(1);
   }, []);
   
-  const onRegionChange = React.useCallback((keys: React.Key) => {
-    setRegionFilter(keys);
-    setPage(1);
-  }, []);
+  const onRegionChange = React.useCallback((key: React.Key) => {
+  setRegionFilter(String(key));
+  setPage(1);
+}, []);
 
 
   const onClear = React.useCallback(() => {
@@ -253,20 +253,31 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
               onClear={onClear}
               onValueChange={onSearchChange}
             />
-            <Select
-              aria-label="Market region filter"
-              placeholder="Filter by region"
-              selectedKeys={new Set([regionFilter])}
-              onSelectionChange={(keys) => onRegionChange((keys as Set<React.Key>).values().next().value)}
-              className="w-full md:max-w-xs"
-            >
-              <SelectItem key="all">All Regions</SelectItem>
-              {(marketRegions || []).map(region => (
-                <SelectItem key={region.name} textValue={region.name}>
-                  {region.name}
-                </SelectItem>
-              ))}
-            </Select>
+          <Select
+  aria-label="Market region filter"
+  placeholder="Filter by region"
+  selectedKeys={new Set<string>([regionFilter])}
+  onSelectionChange={(keys) => {
+  const selected = (keys as Set<string | number>).values().next().value ?? "all";
+  const selectedString = String(selected);
+  setRegionFilter(selectedString);
+  onRegionChange(selectedString);
+}}
+  className="w-full md:max-w-xs"
+  items={[
+    { key: "all", name: "All Regions" },
+    ...(marketRegions || []).map(region => ({
+      key: region.name,
+      name: region.name,
+    })),
+  ]}
+>
+  {(item) => (
+    <SelectItem key={item.key} textValue={item.name}>
+      {item.name}
+    </SelectItem>
+  )}
+</Select>
           </div>
           <div className="flex gap-3">
             <Button color="primary" startContent={<Icon icon="lucide:plus" />} onPress={handleAddLead}>

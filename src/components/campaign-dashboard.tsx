@@ -23,12 +23,13 @@ import { CampaignSettings } from './campaign-settings'
 import { TemplatePreview } from './template-preview'
 import { EmailSelector } from './email-selector'
 import { CampaignConsole } from './campaign-console'
-import { type LeadWithProperties } from './campaign-dashboard-wrapper';
+import type { Database } from '@/types/supabase';
 
 // Define types based on Supabase schema
 type Campaign = Database['public']['Tables']['campaigns']['Row'];
+type LeadData = Database['public']['Views']['properties_with_contacts']['Row'];
 
-export function CampaignDashboard({ leads, userRole }: { leads: LeadWithProperties[], userRole: string }) {
+export function CampaignDashboard({ leads, userRole }: { leads: LeadData[], userRole: string }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
   const [isLoading, setIsLoading] = useState(true);
@@ -152,7 +153,7 @@ export function CampaignDashboard({ leads, userRole }: { leads: LeadWithProperti
                     <div className="lg:col-span-2">
                       <LeadsTable
                         leads={leads.filter(
-                          (l: LeadWithProperties) => l.campaign_id === selectedCampaign.id
+                          (l: LeadData) => l.campaign_id === selectedCampaign.id
                         )}
                       />
                     </div>

@@ -29,30 +29,17 @@ async function invalidateLeadCaches(propertyId?: string) {
       keysToDel.push(`lead:details:${propertyId}`);
     }
 
-    // Add specific, known list cache keys
-    keysToDel.push('leads:region:all:search:none');
+    // Find and add all list-based cache keys to the deletion list
+    const leadListKeys = await redis.keys('leads:*');
+    const regionListKeys = await redis.keys('market_regions:*');
 
-    // Fetch market regions and add their cache keys
-    const supabase = await createAdminServerClient();
-    const { data: regions, error: regionsError } = await supabase
-      .from('market_regions')
-      .select('name');
-
-    if (regionsError) {
-      console.error('Failed to fetch market regions for cache invalidation:', regionsError);
-    } else if (regions) {
-      regions.forEach(region => {
-        if (region.name) {
-          keysToDel.push(`leads:region:${region.name}:search:none`);
-        }
-      });
-    }
+    const allKeys = [...keysToDel, ...leadListKeys, ...regionListKeys];
     
     // Use a Set to ensure we only delete unique keys
-    const uniqueKeys = [...new Set(keysToDel)];
+    const uniqueKeys = [...new Set(allKeys)];
 
     if (uniqueKeys.length > 0) {
-      console.log('[CACHE INVALIDATION] Deleting specific keys:', uniqueKeys);
+      console.log('[CACHE INVALIDATION] Deleting keys:', uniqueKeys);
       await redis.del(uniqueKeys);
     }
   } catch (error) {
@@ -132,9 +119,11 @@ export async function saveLead(leadData: {
 
   try {
     let savedProperty: Property | null = null;
+    let finalUserId: string | undefined;
 
     if (property.property_id) {
       propertyIdForInvalidation = property.property_id;
+      finalUserId = property.user_id;
       // --- UPDATE ---
       const { data, error } = await supabase
         .from('properties')
@@ -151,10 +140,11 @@ export async function saveLead(leadData: {
       const userSupabase = createClient();
       const { data: { user } } = await userSupabase.auth.getUser();
       if (!user) throw new Error('User not authenticated.');
+      finalUserId = user.id;
 
       const propertyToInsert: TablesInsert<'properties'> = {
         ...property,
-        user_id: user.id,
+        user_id: finalUserId,
       };
 
       const { data: newlyCreatedProperty, error } = await supabase
@@ -166,24 +156,18 @@ export async function saveLead(leadData: {
       if (error) {
         throw new Error(`Failed to create property: ${error.message}`);
       }
-      // Add this check to ensure newlyCreatedProperty is not null
       if (!newlyCreatedProperty) {
         throw new Error('Property creation reported successful, but no data was returned.');
       }
-      savedProperty = newlyCreatedProperty; // Now newlyCreatedProperty is known to be non-null
+      savedProperty = newlyCreatedProperty;
     }
 
-    if (!savedProperty) {
-      throw new Error("Failed to get property ID after save.");
-    }
-
-    // Ensure we have a property ID for cache invalidation after the null check
-    if (!propertyIdForInvalidation) {
-      propertyIdForInvalidation = savedProperty.property_id;
+    if (!savedProperty || !finalUserId) {
+      throw new Error("Failed to get property or user ID after save operation.");
     }
     
-    // De-structure after the null check to satisfy TypeScript's control flow analysis
-    const { property_id: finalPropertyId, user_id: finalUserId } = savedProperty;
+    propertyIdForInvalidation = savedProperty.property_id;
+    const finalPropertyId = savedProperty.property_id;
 
     // --- UPSERT CONTACTS ---
     const contactIdsToKeep: string[] = [];
@@ -195,22 +179,22 @@ export async function saveLead(leadData: {
     if (contactsToUpsert.length > 0) {
         const { error: upsertError } = await supabase
             .from('contacts')
-            .upsert(contactsToUpsert);
+            .upsert(contactsToUpsert, { onConflict: 'contact_id' }); // Specify onConflict strategy
 
         if (upsertError) throw new Error(`Failed to upsert contacts: ${upsertError.message}`);
     }
     
-    if (contactIdsToKeep.length > 0) {
-        const { error: deleteError } = await supabase
-          .from('contacts')
-          .delete()
-          .eq('property_id', savedProperty.property_id)
-          .not('contact_id', 'in', `(${contactIdsToKeep.join(',')})`);
-      
-        if (deleteError) {
-            console.warn(`Could not delete removed contacts for property ${savedProperty.property_id}: ${deleteError.message}`);
-        }
+    // Delete contacts that were removed in the UI
+    const { error: deleteError } = await supabase
+      .from('contacts')
+      .delete()
+      .eq('property_id', finalPropertyId)
+      .not('contact_id', 'in', `(${contactIdsToKeep.join(',')})`);
+  
+    if (deleteError && contactIdsToKeep.length > 0) {
+        console.warn(`Could not delete removed contacts for property ${finalPropertyId}: ${deleteError.message}`);
     }
+
 
     await invalidateLeadCaches(propertyIdForInvalidation);
     revalidatePath('/');
