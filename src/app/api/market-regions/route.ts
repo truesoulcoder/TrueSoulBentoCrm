@@ -5,7 +5,7 @@ import redis from '@/lib/redis';
 
 export const dynamic = 'force-dynamic';
 
-const CACHE_KEY = 'market_regions:active';
+const CACHE_KEY = 'market_regions:active_list'; // Updated cache key for clarity
 const CACHE_TTL_SECONDS = 600; // Cache for 10 minutes
 
 export async function GET() {
@@ -25,8 +25,11 @@ export async function GET() {
 
   try {
     const supabase = await createAdminServerClient();
+    
+    // FIX: Query the 'market_regions' table directly and select only id and name.
+    // This avoids the slow 'active_market_regions' view and its aggregations.
     const { data, error } = await supabase
-      .from('active_market_regions')
+      .from('market_regions')
       .select('id, name')
       .order('name', { ascending: true });
 
