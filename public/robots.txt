@@ -2,4 +2,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://yoursite.com/sitemap.xml
+# The sitemap will be dynamically added here by the 'next-sitemap' package during the build process.

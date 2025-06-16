@@ -11,7 +11,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
       <head>
-        <link id="favicon" rel="icon" href="/favicon-light.svg" type="image/svg+xml" />
+        <link id="favicon" rel="icon" href="/favicon.ico" type="image/x-icon" />
       </head>
       <body className="h-full">
         <Providers>
