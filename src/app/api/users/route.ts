@@ -8,7 +8,7 @@ import type { Database } from '@/types/supabase';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  // FIX: Await the cookies() call to get the resolved cookie store.
+  // **THE FIX**: Added 'await' here to correctly get the cookie store.
   const cookieStore = await cookies();
 
   const supabase = createServerClient<Database>(
@@ -17,32 +17,26 @@ export async function GET() {
     {
       cookies: {
         get(name: string) {
-          // This now works because cookieStore is an object, not a Promise
           return cookieStore.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value, ...options });
-          } catch (error) {
-            // This can happen in read-only Server Components.
-          }
+          } catch (error) { /* Ignore errors in read-only environments */ }
         },
         remove(name: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value: '', ...options });
-          } catch (error) {
-            // This can happen in read-only Server Components.
-          }
+          } catch (error) { /* Ignore errors in read-only environments */ }
         },
       },
     }
   );
 
   try {
-    // FIX: Switched from getSession() to getUser() for better security
+    // **THE FIX**: Use getUser() for better security and to address server warnings.
     const { data: { user } } = await supabase.auth.getUser();
     
-    // The role check for 'superadmin' will now work correctly.
     if (!user || (user.user_metadata?.user_role as string) !== 'superadmin') {
         return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }

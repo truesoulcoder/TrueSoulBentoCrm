@@ -9,7 +9,7 @@ const CACHE_KEY = 'market_regions:active_list';
 const CACHE_TTL_SECONDS = 600; // Cache for 10 minutes
 
 export async function GET() {
-  // --- Resilient Caching Read Block ---
+  // Resilient Caching Read
   try {
     const cachedData = await redis.get(CACHE_KEY);
     if (cachedData) {
@@ -20,13 +20,12 @@ export async function GET() {
     console.error(`[MARKET_REGIONS CACHE READ ERROR] Could not read from cache. Falling back to DB.`, cacheError);
   }
   
-  // --- Database as the Source of Truth ---
   console.log(`[CACHE MISS] Fetching from database: ${CACHE_KEY}`);
 
   try {
     const supabase = await createAdminServerClient();
     
-    // FIX: Query the 'market_regions' table directly. This is much faster.
+    // **THE FIX**: This queries the fast 'market_regions' table directly.
     const { data, error } = await supabase
       .from('market_regions')
       .select('id, name')
@@ -36,11 +35,10 @@ export async function GET() {
       throw new Error(error.message);
     }
     
-    // --- Resilient Caching Write Block ---
+    // Resilient Caching Write
     try {
       if(data) {
         await redis.set(CACHE_KEY, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
-        console.log(`[CACHE SET] Stored data for key: ${CACHE_KEY}`);
       }
     } catch (cacheError) {
         console.error(`[MARKET_REGIONS CACHE WRITE ERROR] Could not write to cache.`, cacheError);
