@@ -15,12 +15,10 @@ import {
   DropdownTrigger,
   DropdownMenu,
   DropdownItem,
-  Tooltip,
   Chip,
   Spinner,
   useDisclosure,
   Input,
-  Modal,
   Select, 
   SelectItem
 } from "@heroui/react";
@@ -28,14 +26,12 @@ import type { Database } from "@/types/supabase";
 import LeadModal from "./lead-modal";
 
 // TYPE DEFINITIONS
-type LeadData = Database['public']['Tables']['campaign_leads']['Row'] & {
-  properties?: Database['public']['Tables']['properties']['Row'] | null;
-};
-
+// FIX: Update the LeadData type to match the properties_with_contacts view/RPC result.
+type LeadData = Database['public']['Views']['properties_with_contacts']['Row'];
 type MarketRegion = { id: string; name: string };
 
 interface LeadsTableProps {
-  leads?: LeadData[]; // Optional leads prop
+  leads?: LeadData[]; // Prop remains the same, but the type it holds is different.
 }
 
 // HELPER FUNCTIONS
@@ -57,25 +53,23 @@ const formatCurrency = (value: number | null | undefined) => {
   }).format(value);
 };
 
-// New helper to safely access nested properties
+// Now gets a value directly from the LeadData object. No nesting needed.
 const getCellValue = (lead: LeadData, key: string): any => {
-    if (key.startsWith('properties.')) {
-        const propKey = key.substring(11); // "properties.".length
-        return lead.properties?.[propKey as keyof typeof lead.properties];
-    }
     return lead[key as keyof LeadData];
 }
 
 // TABLE CONFIGURATION
+// FIX: Update columns to match the fields available in the 'properties_with_contacts' view.
 const columns = [
   { name: "STATUS", uid: "status", sortable: true },
-  { name: "CONTACTS", uid: "contact_name", sortable: true },
-  { name: "ADDRESS", uid: "properties.property_address", sortable: true },
-  { name: "REGION", uid: "properties.market_region", sortable: true },
-  { name: "MARKET VALUE", uid: "properties.market_value", sortable: true },
-  { name: "TYPE", uid: "properties.property_type", sortable: true },
-  { name: "LIST PRICE", uid: "properties.mls_list_price", sortable: true },
-  { name: "DOM", uid: "properties.mls_days_on_market", sortable: true },
+  { name: "CONTACTS", uid: "contact_names", sortable: true },
+  { name: "ADDRESS", uid: "property_address", sortable: true },
+  { name: "REGION", uid: "market_region", sortable: true },
+  { name: "MARKET VALUE", uid: "market_value", sortable: true },
+  { name: "TYPE", uid: "property_type", sortable: true },
+  { name: "LIST PRICE", uid: "mls_list_price", sortable: true },
+  { name: "DOM", uid: "mls_days_on_market", sortable: true },
+  { name: "ACTIONS", uid: "actions" },
 ];
 
 const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "warning" | "danger" | "default" } = {
@@ -96,10 +90,11 @@ const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "wa
 export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
   const [filterValue, setFilterValue] = React.useState("");
   const [debouncedFilterValue, setDebouncedFilterValue] = React.useState("");
-  const [regionFilter, setRegionFilter] = React.useState("all");
+  const [regionFilter, setRegionFilter] = React.useState<React.Key>("all");
 
   const shouldFetchInternally = !propLeads;
 
+  // This SWR call now fetches from the corrected API route
   const { data: fetchedLeads, error: swrError, isLoading: swrIsLoading, mutate } = useSWR<LeadData[]>(
     shouldFetchInternally ? `/api/leads?search=${debouncedFilterValue}&region=${regionFilter}` : null,
     fetcher
@@ -128,11 +123,9 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
 
   const [sortDescriptor, setSortDescriptor] = React.useState({
-    column: "properties.market_value",
+    column: "market_value",
     direction: "descending" as "ascending" | "descending",
   });
-
-  const [selectedKeys, setSelectedKeys] = React.useState(new Set<string>());
 
   const items = React.useMemo(() => {
     const start = (page - 1) * rowsPerPage;
@@ -146,8 +139,9 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
       if (first == null && second == null) return 0;
       if (first == null) return 1;
       if (second == null) return -1;
-
+      
       const cmp = String(first).localeCompare(String(second), undefined, { numeric: true });
+
       return sortDescriptor.direction === "descending" ? -cmp : cmp;
     });
 
@@ -159,23 +153,10 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
     setPage(1);
   }, []);
   
-  type ComponentSelection = Set<React.Key> | "all";
-
-  const onRegionChange = React.useCallback((keys: ComponentSelection) => {
-    let newRegionFilter = "all"; 
-
-    if (keys instanceof Set) {
-      if (keys.size > 0) {
-        const selectedKey = Array.from(keys)[0]; 
-        newRegionFilter = String(selectedKey);
-      }
-    } else if (typeof keys === 'string' && keys === 'all') {
-      newRegionFilter = "all";
-    }
-
-    setRegionFilter(newRegionFilter);
-    setPage(1); 
-  }, [setRegionFilter, setPage]);
+  const onRegionChange = React.useCallback((keys: React.Key) => {
+    setRegionFilter(keys);
+    setPage(1);
+  }, []);
 
 
   const onClear = React.useCallback(() => {
@@ -189,10 +170,8 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
   }, [onOpen]);
 
   const handleEditLead = React.useCallback((lead: LeadData) => {
-    // We need the property_id from the nested properties object
-    const propId = lead.properties?.property_id;
-    if (propId) {
-        setSelectedPropertyId(propId);
+    if (lead.property_id) {
+        setSelectedPropertyId(lead.property_id);
         onOpen();
     } else {
         console.error("Cannot edit lead: property_id is missing.", lead);
@@ -205,53 +184,60 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
   };
   
   const handleSaveSuccess = () => {
-    if (shouldFetchInternally && mutate) {
+    if (shouldFetchInternally) {
       mutate();
     }
     handleCloseModal();
   };
 
   const renderCell = React.useCallback((lead: LeadData, columnKey: React.Key) => {
-    const value = getCellValue(lead, columnKey as string);
+    const cellValue = getCellValue(lead, columnKey as string);
 
     switch (columnKey) {
       case "status":
-        const statusKey = value as keyof typeof statusColorMap;
-        return <Chip className="capitalize" color={statusColorMap[statusKey] || "default"} size="sm" variant="flat">{value || "N/A"}</Chip>;
+        const statusKey = cellValue as keyof typeof statusColorMap;
+        return <Chip className="capitalize" color={statusColorMap[statusKey] || "default"} size="sm" variant="flat">{cellValue || "N/A"}</Chip>;
 
-      case "contact_name":
+      case "contact_names":
         return (
           <div className="text-xs">
             <div className="flex justify-between items-center font-medium">
-              <span className="truncate">{value || 'N/A'}</span>
+              <span className="truncate">{lead.contact_names || 'N/A'}</span>
             </div>
-            <div className="text-default-600 truncate">{lead.contact_email || 'No Email'}</div>
+            <div className="text-default-600 truncate">{lead.contact_emails || 'No Email'}</div>
           </div>
         );
 
-      case "properties.property_address":
-        const property = lead.properties;
-        if (!property) return "N/A";
+      case "property_address":
         return (
           <div className="flex items-center gap-2">
             <Icon icon="mdi:map-marker" className="text-red-500 w-5 h-5 flex-shrink-0" />
             <div>
-              <div className="font-medium">{property.property_address || 'N/A'}</div>
+              <div className="font-medium">{lead.property_address || 'N/A'}</div>
               <div className="text-xs text-default-500">
-                {`${property.property_city || ''}, ${property.property_state || ''} ${property.property_postal_code || ''}`}
+                {`${lead.property_city || ''}, ${lead.property_state || ''} ${lead.property_postal_code || ''}`}
               </div>
             </div>
           </div>
         );
       
-      case "properties.market_value":
-      case "properties.mls_list_price":
-        return formatCurrency(value);
+      case "market_value":
+      case "mls_list_price":
+        return formatCurrency(cellValue);
+
+      case "actions":
+        return (
+          <div className="relative flex items-center gap-2">
+            <Button isIconOnly size="sm" variant="light" onPress={() => handleEditLead(lead)}>
+              <Icon icon="lucide:edit" className="text-lg text-default-500" />
+            </Button>
+          </div>
+        );
 
       default:
-        return value === null || value === undefined ? "N/A" : String(value);
+        return cellValue === null || cellValue === undefined ? "N/A" : String(cellValue);
     }
-  }, []);
+  }, [handleEditLead]);
 
   const topContent = React.useMemo(() => {
     return (
@@ -261,7 +247,7 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
             <Input
               isClearable
               className="w-full md:max-w-md"
-              placeholder="Search all leads..."
+              placeholder="Search leads..."
               startContent={<Icon icon="lucide:search" />}
               value={filterValue}
               onClear={onClear}
@@ -270,19 +256,16 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
             <Select
               aria-label="Market region filter"
               placeholder="Filter by region"
-              selectedKeys={[regionFilter]} 
-              onSelectionChange={onRegionChange} 
+              selectedKeys={new Set([regionFilter])}
+              onSelectionChange={(keys) => onRegionChange((keys as Set<React.Key>).values().next().value)}
               className="w-full md:max-w-xs"
-              items={React.useMemo(() => [
-                { key: "all", name: "All Regions" }, 
-                ...(marketRegions || []).map(region => ({ key: region.name, name: region.name })) 
-              ], [marketRegions])}
             >
-              {(item) => ( 
-                <SelectItem key={item.key} textValue={item.name}>
-                  {item.name}
+              <SelectItem key="all">All Regions</SelectItem>
+              {(marketRegions || []).map(region => (
+                <SelectItem key={region.name} textValue={region.name}>
+                  {region.name}
                 </SelectItem>
-              )}
+              ))}
             </Select>
           </div>
           <div className="flex gap-3">
@@ -302,29 +285,20 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
       <div className="sticky bottom-0 z-20 bg-content1 p-4 border-t border-divider flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-default-500 text-small whitespace-nowrap">Rows per page:</span>
-          <Dropdown>
-            <DropdownTrigger>
-              <Button variant="flat" size="sm" className="text-default-500">
-                {rowsPerPage}
-                <Icon icon="lucide:chevron-down" className="text-small ml-2" />
-              </Button>
-            </DropdownTrigger>
-            <DropdownMenu
-              disallowEmptySelection
-              aria-label="Rows per page"
-              selectionMode="single"
-              selectedKeys={new Set([rowsPerPage.toString()])}
-              onSelectionChange={(keys) => {
+          <Select
+             aria-label="Rows per page"
+             className="w-20"
+             selectedKeys={new Set([String(rowsPerPage)])}
+             onSelectionChange={(keys) => {
                 const value = Array.from(keys as Set<React.Key>)[0];
                 setRowsPerPage(Number(value));
                 setPage(1);
-              }}
-            >
-              <DropdownItem key="10">10</DropdownItem>
-              <DropdownItem key="25">25</DropdownItem>
-              <DropdownItem key="50">50</DropdownItem>
-            </DropdownMenu>
-          </Dropdown>
+             }}
+          >
+              <SelectItem key="10">10</SelectItem>
+              <SelectItem key="25">25</SelectItem>
+              <SelectItem key="50">50</SelectItem>
+          </Select>
         </div>
         <Pagination
           isCompact
@@ -353,11 +327,6 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
         <Table
           aria-label="Leads table with server-side filtering"
           isHeaderSticky
-          selectionMode="multiple"
-          selectedKeys={selectedKeys}
-          onSelectionChange={setSelectedKeys as any}
-          onSortChange={setSortDescriptor as any}
-          sortDescriptor={sortDescriptor as any}
           topContent={topContent}
           bottomContent={bottomContent}
           classNames={{
@@ -372,8 +341,7 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
             {(column) => (
               <TableColumn 
                 key={column.uid} 
-                align="start"
-                allowsSorting={column.sortable}
+                align={column.uid === "actions" ? "center" : "start"}
               >
                 {column.name}
               </TableColumn>
@@ -381,12 +349,12 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
           </TableHeader>
           <TableBody
             items={items}
-            isLoading={(currentIsLoading || isLoadingRegions) && !leadsToDisplay}
+            isLoading={(currentIsLoading || isLoadingRegions)}
             loadingContent={<Spinner label="Loading leads..." />}
             emptyContent={currentError ? "Error loading leads." : (debouncedFilterValue ? "No leads found matching your search." : "No leads to display.")}
           >
             {(item) => (
-              <TableRow key={item.id} onClick={() => handleEditLead(item)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-100">
+              <TableRow key={item.property_id} onClick={() => handleEditLead(item)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-100">
                 {(columnKey) => (
                   <TableCell>
                     {renderCell(item, columnKey)}
