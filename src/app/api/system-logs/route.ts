@@ -6,80 +6,76 @@ import type { Database } from '@/types/supabase'; // Import Database type
 
 export const dynamic = 'force-dynamic'; // Ensure this route is dynamic
 
-// FIX: Update SystemEventLog type to include potentially joined profile data
-// This type definition will be used on the client-side as well.
-// Supabase's select with joins often flattens the result or puts related data under a key,
-// so we'll expect a `profiles` object nested if it's a many-to-one or one-to-one relationship.
-type SystemEventLogWithProfile = Database['public']['Tables']['system_event_logs']['Row'] & {
-  profiles?: { // 'profiles' because we are selecting from it with `profiles(...)`
-    full_name: string | null;
-    email: string;
-    // Add other profile fields if needed
-  } | null;
-};
-
+type SystemEventLog = Database['public']['Tables']['system_event_logs']['Row'];
 
 export async function GET(request: Request) {
-  const supabase = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!, // Use the service role key
-    {
-      auth: {
-        persistSession: false, // Ensure no session persistence
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-      },
-    }
-  );
+  let supabase: ReturnType<typeof createClient<Database>>; // Declare supabase client outside try block
+
+  try {
+    supabase = createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!, // Use the service role key
+      {
+        auth: {
+          persistSession: false, // Ensure no session persistence
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+        },
+      }
+    );
+  } catch (clientError: any) {
+    // Catch errors during Supabase client creation
+    console.error('Error creating Supabase client in /api/system-logs:', clientError);
+    // Log this critical error. Note: logSystemEvent itself might fail if client creation fails.
+    logSystemEvent({
+      event_type: 'SYSTEM_LOGS_API_CLIENT_ERROR',
+      message: `Failed to create Supabase client: ${clientError.message}`,
+      level: 'ERROR',
+      details: { clientError: clientError.message, stack: clientError.stack }
+    }).catch(console.error); // Catch potential error from logSystemEvent itself
+
+    return NextResponse.json({ error: 'Failed to initialize Supabase client' }, { status: 500 });
+  }
 
   const { searchParams } = new URL(request.url);
 
   const limit = parseInt(searchParams.get('limit') || '100', 10);
-  const eventType = searchParams.get('eventType');
-  const level = searchParams.get('level'); // Level is stored in JSONB 'details'
-  const campaignId = searchParams.get('campaignId');
-  const userId = searchParams.get('userId'); // userId is from the client, if passed
+  // Filtering by eventType, level, campaignId, userId is commented out for now
+  // to simplify the initial query and diagnose the permission error.
 
   try {
-    // FIX: Select all from system_event_logs and join with profiles to get user's full_name and email.
-    // This assumes system_event_logs has a 'user_id' column that can be joined with 'profiles.id'.
-    // The 'profiles(...)' syntax tells Supabase to join and select specific fields from the related table.
+    // Current approach, simplified select:
     let query = supabase
       .from('system_event_logs')
-      .select('*, profiles(full_name, email)') // Select all log columns, plus full_name and email from linked profile
+      .select('id, created_at, event_type, message, details')
       .order('created_at', { ascending: false })
       .limit(limit);
-
-    // Apply filters from query params.
-    if (eventType) {
-      query = query.eq('event_type', eventType);
-    }
-    // Note: 'level' is in 'details' JSONB field, so filtering for it would be 'details->>level'.
-    // Re-add client-side filtering logic for 'level' in CampaignConsole if needed.
-    // For direct columns, simple .eq works.
-    if (campaignId) {
-      query = query.eq('campaign_id', campaignId); 
-    }
-    if (userId) {
-      query = query.eq('user_id', userId); 
-    }
-    // If you need to filter by level (which is in details.level), it would look like:
-    // if (level) {
-    //   query = query.eq('details->>level', level); // Server-side JSONB filtering
-    // }
-
 
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching system event logs with profiles join:', error);
+      console.error('Error fetching system event logs from Supabase (basic select):', error);
+      logSystemEvent({
+        event_type: 'SYSTEM_LOGS_API_DB_QUERY_ERROR',
+        message: `Database query failed: ${error.message}`,
+        level: 'ERROR',
+        details: { dbError: error.message, code: error.code, hint: error.hint }
+      }).catch(console.error);
+
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Return data, which will now include nested 'profiles' object if a match was found.
     return NextResponse.json(data);
-  } catch (error: any) {
-    console.error('Unexpected error in GET /api/system-logs (with profiles join):', error.message);
+  } catch (runtimeError: any) {
+    // Catch any other unexpected runtime errors during the query processing
+    console.error('Unexpected runtime error in GET /api/system-logs:', runtimeError.message);
+    logSystemEvent({
+      event_type: 'SYSTEM_LOGS_API_RUNTIME_ERROR',
+      message: `Unexpected runtime error: ${runtimeError.message}`,
+      level: 'ERROR',
+      details: { errorMessage: runtimeError.message, stack: runtimeError.stack }
+    }).catch(console.error);
+
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
