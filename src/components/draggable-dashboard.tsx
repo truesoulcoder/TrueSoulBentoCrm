@@ -33,6 +33,7 @@ interface DraggableDashboardProps {
   currentCampaign: string;
   isEditMode: boolean;
   userRole: string;
+  userId: string; // FIX: Add userId prop here
 }
 
 type LayoutItem = { i: string; x: number; y: number; w: number; h: number };
@@ -44,13 +45,14 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
   currentCampaign,
   isEditMode,
   userRole,
+  userId, // Destructure userId here
 }) => {
   const allDashboardItems: DashboardItem[] = [
     {
       i: "leads",
       title: "Campaign Leads",
       subtitle: "Manage your campaign leads",
-      component: <LeadsTable />,
+      component: <LeadsTable userRole={userRole} userId={userId} />, // Pass userRole and userId
       defaultSize: { w: 4, h: 4 }, 
       minSize: { w: 4, h: 3 },
     },
@@ -170,7 +172,15 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
     items.forEach(item => {
       // For LG, ensure 'senders' starts below 'engine-manager' if both are present
       if (item.i === 'senders' && items.some(i => i.i === 'engine-manager')) {
-        lgLayout.push({ i: item.i, x: 3, y: 6, w: item.defaultSize.w, h: item.defaultSize.h }); // Position below engine manager
+        // Find the position of engine-manager and place senders below it
+        const engineManagerLayout = lgLayout.find(layoutItem => layoutItem.i === 'engine-manager');
+        if (engineManagerLayout) {
+          lgLayout.push({ i: item.i, x: engineManagerLayout.x, y: engineManagerLayout.y + engineManagerLayout.h, w: item.defaultSize.w, h: item.defaultSize.h });
+        } else {
+          // Fallback if engine-manager not found (e.g., if filtered out for non-superadmin)
+          lgLayout.push({ i: item.i, x: 0, y: yLg, w: item.defaultSize.w, h: item.defaultSize.h });
+          yLg += item.defaultSize.h;
+        }
       } else {
         lgLayout.push({ i: item.i, x: 0, y: yLg, w: item.defaultSize.w, h: item.defaultSize.h });
         yLg += item.defaultSize.h;

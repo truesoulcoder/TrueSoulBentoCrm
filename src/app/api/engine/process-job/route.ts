@@ -19,18 +19,21 @@ const nunjucksEnv = configure(templateDir, { autoescape: true, noCache: true });
 
 // FIX: Ensure 'details' is treated as an object for spreading
 async function logJobOutcome(supabase: Awaited<ReturnType<typeof createAdminServerClient>>, jobId: string, message: string, details?: Json, level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG' = 'INFO') {
-  // Ensure details is an object for spreading. If it's not an object (e.g., string, null, array),
-  // convert it to an object with a 'value' property or an empty object.
-  const detailsObject = (typeof details === 'object' && details !== null && !Array.isArray(details)) 
-    ? details 
-    : { value: details }; // Wrap non-object details in an object, or handle as empty if null/undefined explicitly
+  // Ensure details is an object for spreading.
+  // Combine jobId, campaignId, and leadId directly into the details object before passing to logSystemEvent.
+  const combinedDetails: Json = {
+    jobId: jobId,
+    ...(typeof details === 'object' && details !== null && !Array.isArray(details) ? details : { value: details }),
+  };
 
   await logSystemEvent({
     event_type: 'CAMPAIGN_JOB_OUTCOME',
     message: message,
-    details: { jobId, ...detailsObject }, // Now safe to spread detailsObject
-    campaign_id: (detailsObject as any)?.campaign_id as string, // Assuming campaign_id might be in detailsObject
-    lead_id: (detailsObject as any)?.lead_id as string, // Assuming lead_id might be in detailsObject
+    details: combinedDetails,
+    // campaign_id and lead_id are now part of combinedDetails, and logSystemEvent extracts them if needed.
+    // If not extracted, they will remain part of the generic 'details' JSON.
+    campaign_id: (combinedDetails as any)?.campaign_id as string,
+    user_id: (combinedDetails as any)?.user_id as string, // Assuming user_id might also be in details
     level: level
   });
 }
@@ -40,6 +43,7 @@ export async function POST(request: NextRequest) {
   let jobId: string | null = null;
   let leadId: string | null = null; // Track lead_id for logging
   let campaignId: string | null = null; // Track campaign_id for logging
+  let userId: string | null = null; // Track user_id for logging
 
   const authHeader = request.headers.get('Authorization');
   if (authHeader !== `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`) {
@@ -98,16 +102,18 @@ export async function POST(request: NextRequest) {
     }
 
     const lead = jobData.crm_leads as unknown as Lead;
-    const campaignSteps = jobData.campaigns?.campaign_steps as unknown as CampaignStep[] | undefined;
+    const campaign = jobData.campaigns; // Get the campaign object
+    const campaignSteps = campaign?.campaign_steps as unknown as CampaignStep[] | undefined;
     
-    leadId = lead.id; // Capture lead_id
-    campaignId = jobData.campaign_id; // Capture campaign_id
+    leadId = String(lead.id); // FIX: Convert number to string
+    campaignId = campaign?.id || null; // Capture campaign_id
+    userId = campaign?.user_id || null; // Capture user_id from campaign
 
     if (!lead) {
       await logSystemEvent({
         event_type: 'CAMPAIGN_JOB_MISSING_LEAD_DATA',
         message: `Lead data is missing for job ${jobId}.`,
-        details: { jobId, campaignId },
+        details: { jobId, campaignId, leadId, userId },
         level: 'ERROR'
       });
       throw new Error(`Lead data is missing for job ${jobId}.`);
@@ -116,7 +122,7 @@ export async function POST(request: NextRequest) {
       await logSystemEvent({
         event_type: 'CAMPAIGN_JOB_MISSING_STEPS',
         message: `No campaign steps found for job ${jobId}.`,
-        details: { jobId, campaignId },
+        details: { jobId, campaignId, leadId, userId },
         level: 'ERROR'
       });
       throw new Error(`No campaign steps found for job ${jobId}.`);
@@ -127,7 +133,7 @@ export async function POST(request: NextRequest) {
     await logSystemEvent({
       event_type: 'CAMPAIGN_JOB_FETCHING_SENDER',
       message: `Fetching available sender for job ${jobId} (lead: ${leadId}).`,
-      details: { jobId, campaignId, leadId },
+      details: { jobId, campaignId, leadId, userId },
       level: 'DEBUG'
     });
 
@@ -142,7 +148,7 @@ export async function POST(request: NextRequest) {
       await logSystemEvent({
         event_type: 'CAMPAIGN_JOB_SENDER_FETCH_ERROR',
         message: `Database error fetching sender for job ${jobId}.`,
-        details: { jobId, campaignId, leadId, dbError: senderError.message },
+        details: { jobId, campaignId, leadId, userId, dbError: senderError.message },
         level: 'ERROR'
       });
       throw new Error(`Database error fetching sender: ${senderError.message}`);
@@ -151,7 +157,7 @@ export async function POST(request: NextRequest) {
       await logSystemEvent({
         event_type: 'CAMPAIGN_JOB_NO_SENDER_AVAILABLE',
         message: `No available email senders found that are under quota for job ${jobId}.`,
-        details: { jobId, campaignId, leadId },
+        details: { jobId, campaignId, leadId, userId },
         level: 'WARN'
       });
       throw new Error('No available email senders found that are under quota.');
@@ -161,7 +167,7 @@ export async function POST(request: NextRequest) {
     await logSystemEvent({
       event_type: 'CAMPAIGN_JOB_SENDER_ASSIGNED',
       message: `Sender ${sender.sender_email} assigned for job ${jobId}.`,
-      details: { jobId, campaignId, leadId, senderEmail: sender.sender_email },
+      details: { jobId, campaignId, leadId, userId, senderEmail: sender.sender_email },
       level: 'DEBUG'
     });
 
@@ -188,7 +194,7 @@ export async function POST(request: NextRequest) {
     await logSystemEvent({
       event_type: 'CAMPAIGN_JOB_PDF_GENERATION_START',
       message: `Generating PDF for job ${jobId}.`,
-      details: { jobId, campaignId, leadId, propertyAddress: personalizationData.property_address },
+      details: { jobId, campaignId, leadId, userId, propertyAddress: personalizationData.property_address },
       level: 'DEBUG'
     });
 
@@ -197,7 +203,7 @@ export async function POST(request: NextRequest) {
       await logSystemEvent({
         event_type: 'CAMPAIGN_JOB_PDF_GENERATION_FAILED',
         message: `PDF generation failed for job ${jobId}.`,
-        details: { jobId, campaignId, leadId, propertyAddress: personalizationData.property_address },
+        details: { jobId, campaignId, leadId, userId, propertyAddress: personalizationData.property_address },
         level: 'ERROR'
       });
       throw new Error("PDF generation failed and returned no buffer.");
@@ -206,7 +212,7 @@ export async function POST(request: NextRequest) {
     await logSystemEvent({
       event_type: 'CAMPAIGN_JOB_EMAIL_SEND_START',
       message: `Attempting to send email for job ${jobId} to ${lead.contact_email}.`,
-      details: { jobId, campaignId, leadId, recipient: lead.contact_email, subject },
+      details: { jobId, campaignId, leadId, userId, recipient: lead.contact_email, subject },
       level: 'INFO'
     });
 
@@ -223,7 +229,7 @@ export async function POST(request: NextRequest) {
       await logSystemEvent({
         event_type: 'CAMPAIGN_JOB_EMAIL_SEND_FAILED',
         message: `Email sending failed for job ${jobId}: ${errorMessage}`,
-        details: { jobId, campaignId, leadId, recipient: lead.contact_email, error: errorMessage },
+        details: { jobId, campaignId, leadId, userId, recipient: lead.contact_email, error: errorMessage },
         level: 'ERROR'
       });
       throw new Error(errorMessage);
@@ -235,7 +241,7 @@ export async function POST(request: NextRequest) {
     await logSystemEvent({
       event_type: 'CAMPAIGN_JOB_COMPLETED',
       message: `Job ${jobId} processed and email sent successfully.`,
-      details: { jobId, campaignId, leadId, recipient: lead.contact_email, messageId: emailResult.globalMessageId, senderEmail: sender.sender_email },
+      details: { jobId, campaignId, leadId, userId, recipient: lead.contact_email, messageId: emailResult.globalMessageId, senderEmail: sender.sender_email },
       level: 'INFO'
     });
 
@@ -248,7 +254,7 @@ export async function POST(request: NextRequest) {
       await logSystemEvent({
         event_type: 'CAMPAIGN_JOB_FAILED',
         message: `Job processing failed for job ${jobId}: ${error.message}`,
-        details: { jobId, campaignId, leadId, error: error.message },
+        details: { jobId, campaignId, leadId, userId, error: error.message },
         level: 'ERROR'
       });
     } else {
