@@ -1,6 +1,6 @@
 // src/services/logService.ts
 import { createAdminServerClient } from '@/lib/supabase/server'; // Ensure this import is correct and awaited
-import { Json } from '@/types/supabase';
+import { Json } from '@/types/supabase'; // Import Json type for clarity
 
 /**
  * Inserts a system event log entry into the system_event_logs table.
@@ -15,8 +15,8 @@ export async function logSystemEvent({
   event_type,
   message,
   details,
-  campaign_id,
-  user_id,
+  campaign_id, // This parameter will no longer be used directly for DB column
+  user_id,     // This parameter will no longer be used directly for DB column
   level = 'INFO', // Default level to INFO if not provided
 }: {
   event_type: string;
@@ -31,22 +31,25 @@ export async function logSystemEvent({
 
     // FIX: Embed 'level', 'campaign_id', and 'user_id' directly into the 'details' JSONB column,
     // as the `system_event_logs` table schema does not have dedicated columns for them.
+    // This is a temporary diagnostic measure to bypass "permission denied" if tied to FK/RLS on these columns.
     const combinedDetails: Json = {
       level: level, // Embed level inside details
-      message_details: details, // Original details payload
-      // Include campaign_id and user_id in details as well, if they are not top-level columns
-      // This ensures all relevant context is preserved in the JSON
-      campaign_id_context: campaign_id,
-      user_id_context: user_id
+      original_details: details, // Original details payload
+      // Temporarily remove campaign_id and user_id from here too for testing
+      // If the error resolves, it means one of these fields (or their FKs) was the problem.
+      // campaign_id_context: campaign_id, // Temporarily removed
+      // user_id_context: user_id // Temporarily removed
     };
 
     const { error } = await supabase.from('system_event_logs').insert({
       event_type,
       message,
       details: JSON.stringify(combinedDetails), // Stringify the combined JSON object
-      // Do NOT include campaign_id or user_id directly here if they are not actual columns
-      // If your DB has these columns, they should be passed directly here from the parameters
-      // For now, based on init.sql, they are not, so we rely on 'details'
+      // Do NOT include campaign_id or user_id directly here as top-level columns.
+      // They are assumed to be in 'details' JSONB field.
+      // If your DB has these columns, they should be explicitly passed from the parameters:
+      // campaign_id: campaign_id,
+      // user_id: user_id,
     });
 
     if (error) {
