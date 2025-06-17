@@ -1,12 +1,5 @@
 // src/app/api/leads/upload/route.ts
 
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '50mb', // Set to 50mb as per user requirement
-    },
-  },
-};
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
@@ -14,6 +7,13 @@ import Papa from 'papaparse';
 import { Readable } from 'stream';
 import redis from '@/lib/redis';
 
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '50mb', // Set to 50mb as per user requirement
+    },
+  },
+};
 // Helper function to clear all relevant lead and region caches from Redis.
 async function invalidateLeadCaches() {
   try {
@@ -147,7 +147,7 @@ export async function POST(request: Request) {
       Papa.parse(Readable.fromWeb(csvStream as any), {
         header: true,
         skipEmptyLines: true,
-        step: async (results, parser) => {
+        step: async (results: { data: Record<string, string>; }, parser: { pause: () => void; resume: () => void; }) => {
           parser.pause();
           try {
             const r = results.data as Record<string, string>;
@@ -226,7 +226,7 @@ export async function POST(request: Request) {
             reject(err);
           }
         },
-        error: (err) => reject(err),
+        error: (err: any) => reject(err),
       });
     });
 
