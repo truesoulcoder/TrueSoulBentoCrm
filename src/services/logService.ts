@@ -1,5 +1,6 @@
 // src/services/logService.ts
 import { createAdminServerClient } from '@/lib/supabase/server'; // Ensure this import is correct and awaited
+import { Json } from '@/types/supabase';
 
 /**
  * Inserts a system event log entry into the system_event_logs table.
@@ -27,15 +28,25 @@ export async function logSystemEvent({
 }) {
   try {
     const supabase = await createAdminServerClient(); // Await the client creation
+
+    // FIX: Embed 'level', 'campaign_id', and 'user_id' directly into the 'details' JSONB column,
+    // as the `system_event_logs` table schema does not have dedicated columns for them.
+    const combinedDetails: Json = {
+      level: level, // Embed level inside details
+      message_details: details, // Original details payload
+      // Include campaign_id and user_id in details as well, if they are not top-level columns
+      // This ensures all relevant context is preserved in the JSON
+      campaign_id_context: campaign_id,
+      user_id_context: user_id
+    };
+
     const { error } = await supabase.from('system_event_logs').insert({
       event_type,
       message,
-      details: details ? (typeof details === 'string' ? details : JSON.stringify(details)) : null,
-      campaign_id,
-      user_id,
-      level,
-      // created_at is automatically handled by default value in DB now
-      // updated_at trigger is also in the DB
+      details: JSON.stringify(combinedDetails), // Stringify the combined JSON object
+      // Do NOT include campaign_id or user_id directly here if they are not actual columns
+      // If your DB has these columns, they should be passed directly here from the parameters
+      // For now, based on init.sql, they are not, so we rely on 'details'
     });
 
     if (error) {

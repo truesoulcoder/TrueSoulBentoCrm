@@ -17,7 +17,13 @@ interface CampaignConsoleProps {
 }
 
 // Re-usable fetcher for useSWR
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+const fetcher = (url: string) => fetch(url).then(res => {
+  if (!res.ok) {
+    // If response is not OK, throw an error to trigger SWR's error state
+    return res.text().then(text => { throw new Error(text || res.statusText); });
+  }
+  return res.json();
+});
 
 export const CampaignConsole: React.FC<CampaignConsoleProps> = ({ isRunning, isPaused }) => {
   // Fetch logs from the new API endpoint
@@ -70,6 +76,7 @@ export const CampaignConsole: React.FC<CampaignConsoleProps> = ({ isRunning, isP
   // FIX: This function now tries to read 'level' from the 'details' JSON.
   // It also accepts 'event_type' as a fallback if 'details.level' is not available.
   const getIconForType = (logEntry: SystemEventLog) => {
+    // Access level from details property
     const levelFromDetails = (logEntry.details as any)?.level;
     const typeToUse = levelFromDetails || logEntry.event_type;
 
@@ -127,7 +134,6 @@ export const CampaignConsole: React.FC<CampaignConsoleProps> = ({ isRunning, isP
       case "ZILLOW_WORKER_SCRAPER_FAILED":
       case "ZILLOW_WORKER_JOB_FAILED":
       case "ZILLOW_WORKER_UNEXPECTED_ERROR":
-      case "ZILLOW_WORKER_ENHANCEMENT_CRITICAL_FAILURE":
       case "WORKER_LOG_RECEIVE_ERROR":
         return <Icon icon="lucide:x-circle" className="text-red-500" />;
       case "DEBUG":
@@ -149,7 +155,10 @@ export const CampaignConsole: React.FC<CampaignConsoleProps> = ({ isRunning, isP
   const statusColor = isRunning ? (isPaused ? "bg-warning-500" : "bg-success-500") : "bg-default-300";
   const statusText = isRunning ? (isPaused ? "Paused" : "Running") : "Stopped";
 
-  if (isLoading && !logs) {
+  // FIX: Ensure logs is an array before mapping.
+  const displayLogs = Array.isArray(logs) ? logs : [];
+
+  if (isLoading && displayLogs.length === 0) { // Only show loading if no data is present yet
     return (
       <div className="flex h-full items-center justify-center rounded-medium bg-content2">
         <p className="text-default-500">Loading logs...</p>
@@ -178,10 +187,10 @@ export const CampaignConsole: React.FC<CampaignConsoleProps> = ({ isRunning, isP
       </div>
 
       <ScrollShadow ref={scrollRef} className="h-full rounded-medium bg-content2 p-3 font-mono text-xs">
-        {(logs || []).length === 0 ? (
+        {displayLogs.length === 0 ? (
           <div className="text-default-400">No recent activity.</div>
         ) : (
-          (logs || []).map((log) => (
+          displayLogs.map((log) => ( // Use displayLogs here
             <div key={log.id} className="mb-1 flex items-start gap-2">
               <span className="text-default-400">[{new Date(log.created_at).toLocaleTimeString()}]</span>
               {/* FIX: Pass the whole log object to getIconForType */}
