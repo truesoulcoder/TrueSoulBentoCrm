@@ -29,27 +29,29 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabase = await createClient();
-    
-    // **THE FIX**: This query is much more efficient.
-    // It builds the query dynamically and filters in the database, not in the code.
-    let query = supabase.from('properties_with_contacts').select('*');
 
-    if (region && region !== 'all') {
-      query = query.eq('market_region', region);
-    }
-    
-    if (search) {
-      query = query.or(
-        `contact_names.ilike.%${search}%,property_address.ilike.%${search}%,contact_emails.ilike.%${search}%,property_city.ilike.%${search}%`
-      );
+    // Call the optimized SQL function search_properties_with_contacts
+    const { data: rpcData, error: rpcError } = await supabase.rpc('search_properties_with_contacts', {
+      search_term: search // Pass the search term from the request
+    });
+
+    if (rpcError) {
+      console.error('Supabase RPC error fetching leads:', { message: rpcError.message });
+      throw new Error(`Failed to fetch leads via RPC: ${rpcError.message}`);
     }
 
-    const { data, error } = await query;
+    let processedData = rpcData;
 
-    if (error) {
-      console.error('Supabase query error fetching leads:', { message: error.message });
-      throw new Error(`Failed to fetch leads: ${error.message}`);
+    // If a specific region is requested (and not 'all'), filter the results from the RPC call
+    // The search_properties_with_contacts function returns market_region, so we can filter on it.
+    if (region && region !== 'all' && Array.isArray(rpcData)) {
+      processedData = rpcData.filter((lead: any) => lead.market_region === region);
     }
+
+    // Use processedData for caching and response
+    const data = processedData;
+    // The rpcError is handled above. If we reach here, it means the RPC call was successful or did not throw an error that wasn't caught.
+    // The 'error' variable is no longer needed here as its role is replaced by rpcError handling.
 
     // Resilient Caching: Tries to write to cache but doesn't fail the request if it can't.
     try {

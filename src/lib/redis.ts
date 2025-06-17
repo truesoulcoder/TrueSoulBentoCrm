@@ -1,42 +1,72 @@
 // src/lib/redis.ts
 import Redis from 'ioredis';
 
-// This will be our singleton instance
-let redis: Redis;
-
-// This trick is to prevent multiple instances in development with hot-reloading
+// Define the structure on the global object to avoid TypeScript errors.
 declare global {
   // eslint-disable-next-line no-var
-  var __redis: Redis | undefined;
+  var redisClient: Redis | undefined;
 }
 
-if (!process.env.REDIS_URL) {
-  throw new Error('REDIS_URL is not set in environment variables');
+let redis: Redis;
+
+const redisUrl = process.env.REDIS_URL;
+if (!redisUrl) {
+  throw new Error('REDIS_URL is not set in the environment variables.');
 }
 
-const redisOptions = {
-  // Only connect when a command is first issued, best for serverless envs.
-  lazyConnect: true,
-  maxRetriesPerRequest: 3,
-  enableReadyCheck: false,
+/**
+ * Creates and configures a new Redis client.
+ * This function is called only when a client doesn't already exist for the process.
+ */
+const createRedisClient = () => {
+  console.log('Creating new Redis client...');
+
+  const client = new Redis(redisUrl, {
+    // For development, connect eagerly. For production (serverless), connect lazily.
+    lazyConnect: process.env.NODE_ENV === 'production',
+    connectTimeout: 10000, // 10 seconds
+    // Keep the connection alive by sending PING commands periodically.
+    keepAlive: 30000, // 30 seconds
+    retryStrategy(times: number) {
+      // Use a more patient exponential backoff strategy.
+      const delay = Math.min(times * 200, 5000); // 200ms, 400ms, ... up to 5s
+      console.log(`Redis: Retrying connection in ${delay}ms (attempt ${times})`);
+      return delay;
+    },
+  });
+
+  // --- Attach Event Listeners Once ---
+  client.on('connect', () => {
+    console.log('Redis client connected successfully.');
+  });
+
+  client.on('error', (err) => {
+    // This listener prevents the app from crashing and logs the error.
+    // The retryStrategy handles the actual reconnection attempts.
+    console.error('Redis Client Error:', err.message);
+  });
+
+  client.on('reconnecting', () => {
+    console.log('Redis client is reconnecting...');
+  });
+
+  client.on('close', () => {
+    console.log('Redis connection has been closed.');
+  });
+
+  return client;
 };
 
-// In a serverless environment or for a single-instance app, you can
-// create the connection once and reuse it. The global variable helps
-// avoid re-creating the connection on every hot-reload in development.
+// --- Singleton Logic for Next.js --- //
+// In production, we create a single client.
 if (process.env.NODE_ENV === 'production') {
-  redis = new Redis(process.env.REDIS_URL, redisOptions);
+  redis = createRedisClient();
 } else {
-  if (!global.__redis) {
-    global.__redis = new Redis(process.env.REDIS_URL, redisOptions);
-    console.log('New lazy Redis client created for development.');
+  // In development, we use a global variable to preserve the client across hot reloads.
+  if (!global.redisClient) {
+    global.redisClient = createRedisClient();
   }
-  redis = global.__redis;
+  redis = global.redisClient;
 }
 
-redis.on('error', (err) => {
-  console.error('Redis Client Error:', err);
-});
-
-// We now export the guaranteed-to-be-defined instance.
 export default redis;
