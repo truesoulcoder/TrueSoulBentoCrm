@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zillow Scraper</title>
+  <style>
+    body {
+      width: 300px;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    }
+    h1 {
+      font-size: 18px;
+      margin-top: 0;
+      color: #333;
+    }
+    .current-url {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 16px;
+      word-break: break-all;
+      padding: 8px;
+      background-color: #f5f5f5;
+      border-radius: 4px;
+      max-height: 60px;
+      overflow-y: auto;
+    }
+    .button-container {
+      display: flex;
+      gap: 8px;
+    }
+    button {
+      flex: 1;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    button:hover {
+      background-color: #0069d9;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    .status {
+      margin-top: 16px;
+      font-size: 14px;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    .success {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    .error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+    .info {
+      background-color: #d1ecf1;
+      color: #0c5460;
+    }
+    .hidden {
+      display: none;
+    }
+    hr {
+      margin: 16px 0;
+      border: 0;
+      height: 1px;
+      background-color: #e0e0e0;
+    }
+    .footer {
+      font-size: 12px;
+      color: #666;
+      margin-top: 16px;
+      text-align: center;
+    }
+    .footer a {
+      color: #007bff;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Zillow Property Scraper</h1>
+  
+  <div id="url-container">
+    <div class="current-url" id="current-url">
+      Not on a Zillow page
+    </div>
+  </div>
+  
+  <div class="button-container">
+    <button id="scrape-button" disabled>Scrape This Page</button>
+    <button id="options-button">Options</button>
+  </div>
+  
+  <div id="status" class="status hidden"></div>
+  
+  <hr>
+  
+  <div class="footer">
+    <a href="#" id="open-dashboard">Open Dashboard</a> | 
+    <a href="#" id="view-jobs">View Jobs</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+.zillow-scraper-button-container {
+  display: inline-block;
+  margin: 0 8px;
+  position: relative;
+}
+
+.zillow-scraper-trigger-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.zillow-scraper-trigger-button:hover {
+  background-color: #0069d9;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+}
+
+.zillow-scraper-trigger-button:active {
+  transform: translateY(1px);
+}
+
+.zillow-scraper-trigger-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.zillow-scraper-trigger-button.success {
+  background-color: #28a745;
+}
+
+.zillow-scraper-trigger-button.error {
+  background-color: #dc3545;
+}
+
+.button-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Make sure our button works with Zillow's dark mode if they have one */
+@media (prefers-color-scheme: dark) {
+  .zillow-scraper-trigger-button {
+    background-color: #0d6efd;
+  }
+  
+  .zillow-scraper-trigger-button:hover {
+    background-color: #0b5ed7;
+  }
+}

@@ -11,6 +11,7 @@ import { TemplatePreview } from "./template-preview";
 import { CampaignSettings } from "./campaign-settings";
 import { LeadsTable } from "./leads-table";
 import { LeadsUpload } from "./leads-upload";
+import ZillowScraperWidget from "./ZillowScraperWidget";
 
 import "react-grid-layout/css/styles.css";
 
@@ -78,11 +79,13 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
     },
     {
       i: "console",
-      title: "Console Log",
-      subtitle: "Real-time campaign updates",
-      component: <CampaignConsole isRunning={isRunning} isPaused={isPaused} />,
-      defaultSize: { w: 2, h: 2 },
-      minSize: { w: 1, h: 2 },
+      title: "Campaign Console",
+      subtitle: "View campaign logs & status",
+      component: (
+        <CampaignConsole isRunning={isRunning} isPaused={isPaused} />
+      ),
+      defaultSize: { w: 6, h: 3 },
+      minSize: { w: 2, h: 3 },
     },
     {
       i: "leads-upload",
@@ -107,6 +110,14 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       component: <CampaignSettings currentCampaign={currentCampaign} />,
       defaultSize: { w: 2, h: 2 },
       minSize: { w: 2, h: 2 },
+    },
+    {
+      i: "zillowScraper",
+      title: "Zillow Property Scraper",
+      subtitle: "Capture property details from Zillow",
+      component: <ZillowScraperWidget />,
+      defaultSize: { w: 6, h: 4 },
+      minSize: { w: 3, h: 4 },
     },
   ];
 
@@ -149,6 +160,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       { i: "leads-upload", x: 2, y: 6, w: 2, h: 2 },
       { i: "template", x: 0, y: 8, w: 2, h: 2 },
       { i: "settings", x: 2, y: 8, w: 2, h: 2 },
+      { i: "zillowScraper", x: 0, y: 10, w: 6, h: 4 },
     ],
     md: [
       { i: "leads", x: 0, y: 0, w: 3, h: 4 },
@@ -159,6 +171,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       { i: "leads-upload", x: 0, y: 8, w: 2, h: 2 },
       { i: "template", x: 0, y: 10, w: 3, h: 2 },
       { i: "settings", x: 0, y: 12, w: 3, h: 2 },
+      { i: "zillowScraper", x: 0, y: 14, w: 6, h: 4 },
     ],
     sm: [
       { i: "leads", x: 0, y: 0, w: 1, h: 4 },
@@ -169,6 +182,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       { i: "leads-upload", x: 0, y: 12, w: 1, h: 2 },
       { i: "template", x: 0, y: 14, w: 1, h: 2 },
       { i: "settings", x: 0, y: 16, w: 1, h: 2 },
+      { i: "zillowScraper", x: 0, y: 18, w: 6, h: 4 },
     ],
   };
 
