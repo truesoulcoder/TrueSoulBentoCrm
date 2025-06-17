@@ -47,6 +47,11 @@ const nextConfig = {
       };
     }
 
+    // Fix: Ignore fsevents on non-macOS builds for chokidar
+    if (isServer) {
+      config.externals = [...(config.externals || []), 'fsevents'];
+    }
+
     return config;
   },
 };

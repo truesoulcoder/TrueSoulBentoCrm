@@ -17,14 +17,20 @@ type CampaignStep = Database['public']['Tables']['campaign_steps']['Row'];
 const templateDir = path.join(process.cwd(), 'src', 'app', 'api', 'engine', 'templates');
 const nunjucksEnv = configure(templateDir, { autoescape: true, noCache: true });
 
-// FIX: Change the type of the 'details' parameter from 'object' to 'Json'
+// FIX: Ensure 'details' is treated as an object for spreading
 async function logJobOutcome(supabase: Awaited<ReturnType<typeof createAdminServerClient>>, jobId: string, message: string, details?: Json, level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG' = 'INFO') {
+  // Ensure details is an object for spreading. If it's not an object (e.g., string, null, array),
+  // convert it to an object with a 'value' property or an empty object.
+  const detailsObject = (typeof details === 'object' && details !== null && !Array.isArray(details)) 
+    ? details 
+    : { value: details }; // Wrap non-object details in an object, or handle as empty if null/undefined explicitly
+
   await logSystemEvent({
     event_type: 'CAMPAIGN_JOB_OUTCOME',
     message: message,
-    details: { jobId, ...details },
-    campaign_id: details?.campaign_id as string, // Assuming campaign_id might be in details
-    lead_id: details?.lead_id as string, // Assuming lead_id might be in details
+    details: { jobId, ...detailsObject }, // Now safe to spread detailsObject
+    campaign_id: (detailsObject as any)?.campaign_id as string, // Assuming campaign_id might be in detailsObject
+    lead_id: (detailsObject as any)?.lead_id as string, // Assuming lead_id might be in detailsObject
     level: level
   });
 }
@@ -144,7 +150,7 @@ export async function POST(request: NextRequest) {
     if (!senders || senders.length === 0) {
       await logSystemEvent({
         event_type: 'CAMPAIGN_JOB_NO_SENDER_AVAILABLE',
-        message: `No available email senders found under quota for job ${jobId}.`,
+        message: `No available email senders found that are under quota for job ${jobId}.`,
         details: { jobId, campaignId, leadId },
         level: 'WARN'
       });
