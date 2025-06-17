@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Button, Input, Progress, ScrollShadow } from '@heroui/react';
 import { Icon } from '@iconify/react';
-import { runZillowScraper } from '../actions/zillowScraper';
 
 interface ZillowScraperWidgetProps {
   className?: string;
@@ -50,12 +49,22 @@ export default function ZillowScraperWidget({ className }: ZillowScraperWidgetPr
       setMessage('Starting Zillow property scraper...');
       setIsInProgress(true);
 
-      // Call the server action instead of fetch
-      const result = await runZillowScraper(zillowUrl, userAgent);
+      const response = await fetch('/api/zillow-scraper', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: zillowUrl,
+          userAgent: userAgent
+        })
+      });
 
-      if (result.success) {
+      const data = await response.json();
+
+      if (data.success) {
         setStatus('success');
-        setMessage(result.message || 'Scraper started successfully. Processing in the background.');
+        setMessage(data.message || 'Scraper started successfully. Processing in the background.');
         setLastRun(new Date());
         
         // Reset to idle after showing success for a few seconds
@@ -63,7 +72,7 @@ export default function ZillowScraperWidget({ className }: ZillowScraperWidgetPr
           setStatus('idle');
         }, 5000);
       } else {
-        throw new Error(result.error || 'Failed to start scraper');
+        throw new Error(data.error || 'Failed to start scraper');
       }
     } catch (error) {
       console.error('Error running scraper:', error);
