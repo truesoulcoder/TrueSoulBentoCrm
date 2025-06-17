@@ -1,9 +1,11 @@
+// src/actions/zillowScraper.ts
 'use server';
 
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { Database } from '@/types/supabase';
 import { revalidatePath } from 'next/cache';
+import { logSystemEvent } from '@/services/logService'; // Import the logging service
 
 export interface ScraperResult {
   success: boolean;
@@ -48,8 +50,7 @@ const createServerClient = async () => {
  * Instead of running directly (which won't work on Vercel),
  * this adds the job to a database table that will be processed
  * by a local script running on your server/computer
- * 
- * @param url The Zillow search URL to scrape
+ * * @param url The Zillow search URL to scrape
  * @param userAgent The user agent string to use for the scraper
  * @returns Result with job information
  */
@@ -59,6 +60,12 @@ export async function runZillowScraper(
 ): Promise<ScraperResult> {
   try {
     if (!url) {
+      await logSystemEvent({
+        event_type: 'ZILLOW_SCRAPER_QUEUE_ERROR',
+        message: 'Attempted to queue Zillow scraper job without a URL.',
+        level: 'ERROR',
+        details: { url, userAgent }
+      });
       return { 
         success: false, 
         error: 'URL is required' 
@@ -71,6 +78,12 @@ export async function runZillowScraper(
     // Get authenticated user
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
+      await logSystemEvent({
+        event_type: 'ZILLOW_SCRAPER_QUEUE_AUTH_ERROR',
+        message: 'Authentication required to queue Zillow scraper job.',
+        level: 'ERROR',
+        details: { url, userAgent }
+      });
       return {
         success: false,
         error: 'Authentication required'
@@ -91,6 +104,12 @@ export async function runZillowScraper(
 
     if (error) {
       console.error('Error creating scraper job:', error);
+      await logSystemEvent({
+        event_type: 'ZILLOW_SCRAPER_QUEUE_DB_ERROR',
+        message: `Failed to create Zillow scraper job in database: ${error.message}`,
+        level: 'ERROR',
+        details: { userId: user.id, url, userAgent, dbError: error.message }
+      });
       return {
         success: false,
         error: `Failed to create scraper job: ${error.message}`
@@ -99,6 +118,13 @@ export async function runZillowScraper(
 
     // Revalidate any pages that might display job status
     revalidatePath('/dashboard');
+
+    await logSystemEvent({
+      event_type: 'ZILLOW_SCRAPER_JOB_QUEUED',
+      message: `Zillow property scraper job ${job.id} queued successfully for URL: ${url}.`,
+      level: 'INFO',
+      details: { jobId: job.id, userId: user.id, url, userAgent }
+    });
     
     return {
       success: true,
@@ -108,6 +134,12 @@ export async function runZillowScraper(
     
   } catch (error) {
     console.error('Failed to queue zillow scraper job:', error);
+    await logSystemEvent({
+      event_type: 'ZILLOW_SCRAPER_QUEUE_UNEXPECTED_ERROR',
+      message: `An unexpected error occurred while queuing Zillow scraper job: ${error instanceof Error ? error.message : String(error)}`,
+      level: 'ERROR',
+      details: { error: error instanceof Error ? error.message : String(error) }
+    });
     return { 
       success: false, 
       error: 'Failed to queue scraper job' 

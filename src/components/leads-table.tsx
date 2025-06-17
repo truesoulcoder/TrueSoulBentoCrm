@@ -32,6 +32,8 @@ type MarketRegion = { id: string; name: string };
 
 interface LeadsTableProps {
   leads?: LeadData[]; // Prop remains the same, but the type it holds is different.
+  userRole?: string; // Add userRole prop
+  userId?: string;   // Add userId prop
 }
 
 // HELPER FUNCTIONS
@@ -87,16 +89,20 @@ const statusColorMap: { [key: string]: "primary" | "secondary" | "success" | "wa
 };
 
 // MAIN COMPONENT
-export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
+export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads, userRole, userId }) => {
   const [filterValue, setFilterValue] = React.useState("");
   const [debouncedFilterValue, setDebouncedFilterValue] = React.useState("");
   const [regionFilter, setRegionFilter] = React.useState<string>("all");
 
-  const shouldFetchInternally = !propLeads;
+  const shouldFetchInternally = !propLeads; // Only fetch if leads are not passed as a prop
+  const isSuperAdmin = userRole === 'superadmin';
+
+  // Construct the API URL for fetching leads
+  const leadsApiUrl = shouldFetchInternally ? `/api/leads?search=${debouncedFilterValue}&region=${regionFilter}${!isSuperAdmin && userId ? `&userId=${userId}` : ''}` : null;
 
   // This SWR call now fetches from the corrected API route
   const { data: fetchedLeads, error: swrError, isLoading: swrIsLoading, mutate } = useSWR<LeadData[]>(
-    shouldFetchInternally ? `/api/leads?search=${debouncedFilterValue}&region=${regionFilter}` : null,
+    leadsApiUrl,
     fetcher
   );
 
@@ -154,9 +160,9 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
   }, []);
   
   const onRegionChange = React.useCallback((key: React.Key) => {
-  setRegionFilter(String(key));
-  setPage(1);
-}, []);
+    setRegionFilter(String(key));
+    setPage(1);
+  }, []);
 
 
   const onClear = React.useCallback(() => {
@@ -184,6 +190,7 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
   };
   
   const handleSaveSuccess = () => {
+    // If fetching internally, revalidate SWR cache
     if (shouldFetchInternally) {
       mutate();
     }
@@ -254,30 +261,30 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
               onValueChange={onSearchChange}
             />
           <Select
-  aria-label="Market region filter"
-  placeholder="Filter by region"
-  selectedKeys={new Set<string>([regionFilter])}
-  onSelectionChange={(keys) => {
-  const selected = (keys as Set<string | number>).values().next().value ?? "all";
-  const selectedString = String(selected);
-  setRegionFilter(selectedString);
-  onRegionChange(selectedString);
-}}
-  className="w-full md:max-w-xs"
-  items={[
-    { key: "all", name: "All Regions" },
-    ...(marketRegions || []).map(region => ({
-      key: region.name,
-      name: region.name,
-    })),
-  ]}
->
-  {(item) => (
-    <SelectItem key={item.key} textValue={item.name}>
-      {item.name}
-    </SelectItem>
-  )}
-</Select>
+            aria-label="Market region filter"
+            placeholder="Filter by region"
+            selectedKeys={new Set<string>([regionFilter])}
+            onSelectionChange={(keys) => {
+            const selected = (keys as Set<string | number>).values().next().value ?? "all";
+            const selectedString = String(selected);
+            setRegionFilter(selectedString);
+            onRegionChange(selectedString);
+          }}
+            className="w-full md:max-w-xs"
+            items={[
+              { key: "all", name: "All Regions" },
+              ...(marketRegions || []).map(region => ({
+                key: region.name,
+                name: region.name,
+              })),
+            ]}
+          >
+            {(item) => (
+              <SelectItem key={item.key} textValue={item.name}>
+                {item.name}
+              </SelectItem>
+            )}
+          </Select>
           </div>
           <div className="flex gap-3">
             <Button color="primary" startContent={<Icon icon="lucide:plus" />} onPress={handleAddLead}>
@@ -362,7 +369,7 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads: propLeads }) => {
             items={items}
             isLoading={(currentIsLoading || isLoadingRegions)}
             loadingContent={<Spinner label="Loading leads..." />}
-            emptyContent={currentError ? "Error loading leads." : (debouncedFilterValue ? "No leads found matching your search." : "No leads to display.")}
+            emptyContent={currentError ? "Error loading leads." : (debouncedFilterValue || regionFilter !== 'all' ? "No leads found matching your criteria." : "No leads to display.")}
           >
             {(item) => (
               <TableRow key={item.property_id} onClick={() => handleEditLead(item)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-100">

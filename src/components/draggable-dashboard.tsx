@@ -12,6 +12,7 @@ import { CampaignSettings } from "./campaign-settings";
 import { LeadsTable } from "./leads-table";
 import { LeadsUpload } from "./leads-upload";
 import ZillowScraperWidget from "./ZillowScraperWidget";
+import { SendersWidget } from "./senders-widget"; // Import the new SendersWidget
 
 import "react-grid-layout/css/styles.css";
 
@@ -31,7 +32,7 @@ interface DraggableDashboardProps {
   isPaused: boolean;
   currentCampaign: string;
   isEditMode: boolean;
-  userRole: string; // <-- New prop for role
+  userRole: string;
 }
 
 type LayoutItem = { i: string; x: number; y: number; w: number; h: number };
@@ -42,7 +43,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
   isPaused,
   currentCampaign,
   isEditMode,
-  userRole, // <-- Destructure new prop
+  userRole,
 }) => {
   const allDashboardItems: DashboardItem[] = [
     {
@@ -116,15 +117,23 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       title: "Zillow Property Scraper",
       subtitle: "Capture property details from Zillow",
       component: <ZillowScraperWidget />,
-      defaultSize: { w: 6, h: 4 },
+      defaultSize: { w: 4, h: 4 },
       minSize: { w: 3, h: 4 },
+    },
+    {
+      i: "senders", // New Senders Widget
+      title: "Email Senders",
+      subtitle: "Manage your sending accounts",
+      component: <SendersWidget />,
+      defaultSize: { w: 2, h: 3 }, // Adjust size as needed
+      minSize: { w: 1, h: 2 },
     },
   ];
 
   // Filter items based on user role
   const dashboardItems = userRole === 'superadmin' 
     ? allDashboardItems 
-    : allDashboardItems.filter(item => item.i === 'leads');
+    : allDashboardItems.filter(item => item.i === 'leads' || item.i === 'zillowScraper');
 
   const getFromLS = (key: string): any => {
     let ls: Record<string, any> = {};
@@ -150,41 +159,41 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
     }
   };
 
-  const defaultLayouts: Layouts = {
-    lg: [
-      { i: "leads", x: 0, y: 0, w: 4, h: 4 },
-      { i: "status", x: 0, y: 4, w: 1, h: 2 },
-      { i: "chart", x: 1, y: 4, w: 2, h: 2 },
-      { i: "engine-manager", x: 3, y: 4, w: 1, h: 2 },
-      { i: "console", x: 0, y: 6, w: 2, h: 2 },
-      { i: "leads-upload", x: 2, y: 6, w: 2, h: 2 },
-      { i: "template", x: 0, y: 8, w: 2, h: 2 },
-      { i: "settings", x: 2, y: 8, w: 2, h: 2 },
-      { i: "zillowScraper", x: 0, y: 10, w: 6, h: 4 },
-    ],
-    md: [
-      { i: "leads", x: 0, y: 0, w: 3, h: 4 },
-      { i: "status", x: 0, y: 4, w: 1, h: 2 },
-      { i: "chart", x: 1, y: 4, w: 2, h: 2 },
-      { i: "engine-manager", x: 0, y: 6, w: 1, h: 2 },
-      { i: "console", x: 1, y: 6, w: 2, h: 2 },
-      { i: "leads-upload", x: 0, y: 8, w: 2, h: 2 },
-      { i: "template", x: 0, y: 10, w: 3, h: 2 },
-      { i: "settings", x: 0, y: 12, w: 3, h: 2 },
-      { i: "zillowScraper", x: 0, y: 14, w: 6, h: 4 },
-    ],
-    sm: [
-      { i: "leads", x: 0, y: 0, w: 1, h: 4 },
-      { i: "status", x: 0, y: 4, w: 1, h: 2 },
-      { i: "chart", x: 0, y: 6, w: 1, h: 2 },
-      { i: "engine-manager", x: 0, y: 8, w: 1, h: 2 },
-      { i: "console", x: 0, y: 10, w: 1, h: 2 },
-      { i: "leads-upload", x: 0, y: 12, w: 1, h: 2 },
-      { i: "template", x: 0, y: 14, w: 1, h: 2 },
-      { i: "settings", x: 0, y: 16, w: 1, h: 2 },
-      { i: "zillowScraper", x: 0, y: 18, w: 6, h: 4 },
-    ],
+  // Define default layouts based on allDashboardItems' default sizes
+  const generateDefaultLayouts = (items: DashboardItem[]): Layouts => {
+    const lgLayout: LayoutItem[] = [];
+    const mdLayout: LayoutItem[] = [];
+    const smLayout: LayoutItem[] = [];
+    
+    let yLg = 0, yMd = 0, ySm = 0; // Track y position for each breakpoint
+
+    items.forEach(item => {
+      // For LG, ensure 'senders' starts below 'engine-manager' if both are present
+      if (item.i === 'senders' && items.some(i => i.i === 'engine-manager')) {
+        lgLayout.push({ i: item.i, x: 3, y: 6, w: item.defaultSize.w, h: item.defaultSize.h }); // Position below engine manager
+      } else {
+        lgLayout.push({ i: item.i, x: 0, y: yLg, w: item.defaultSize.w, h: item.defaultSize.h });
+        yLg += item.defaultSize.h;
+      }
+      
+
+      // Simple stacking for smaller breakpoints
+      mdLayout.push({ i: item.i, x: 0, y: yMd, w: Math.min(item.defaultSize.w, 3), h: item.defaultSize.h });
+      yMd += item.defaultSize.h;
+
+      smLayout.push({ i: item.i, x: 0, y: ySm, w: Math.min(item.defaultSize.w, 1), h: item.defaultSize.h });
+      ySm += item.defaultSize.h;
+    });
+
+    // Sort lgLayout to ensure consistent starting positions based on their initial y.
+    // This helps in consistent layout when regenerating defaults.
+    lgLayout.sort((a, b) => a.y - b.y || a.x - b.x);
+
+    return { lg: lgLayout, md: mdLayout, sm: smLayout };
   };
+
+  const defaultLayouts = React.useMemo(() => generateDefaultLayouts(dashboardItems), [dashboardItems]);
+
 
   const [layouts, setLayouts] = React.useState<Layouts>(() => {
     const savedLayouts = getFromLS("layouts") as Layouts | null;
@@ -202,6 +211,8 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
     setLayouts(defaultLayouts);
     saveToLS("layouts", defaultLayouts);
   };
+
+  const isDraggableResizable = isEditMode && userRole === 'superadmin';
 
   return (
     <div className="relative">
@@ -222,11 +233,11 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       <ResponsiveGridLayout
         className="layout"
         layouts={layouts}
-        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 1 }} // Changed xxs to 1 to ensure a minimum 1 column layout
         cols={{ lg: 4, md: 3, sm: 1, xs: 1, xxs: 1 }}
         rowHeight={150}
-        isDraggable={isEditMode && userRole === 'superadmin'}
-        isResizable={isEditMode && userRole === 'superadmin'}
+        isDraggable={isDraggableResizable} // Apply conditional draggable
+        isResizable={isDraggableResizable} // Apply conditional resizable
         onLayoutChange={handleLayoutChange}
         margin={[16, 16]}
         measureBeforeMount={false}

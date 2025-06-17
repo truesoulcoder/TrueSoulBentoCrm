@@ -4,11 +4,12 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useDropzone } from 'react-dropzone';
-import { Button, Input, Progress } from '@heroui/react';
+import { Button, Input, Progress, Select, SelectItem } from '@heroui/react'; // Added Select and SelectItem
 import { v4 as uuidv4 } from 'uuid';
 import { type RealtimeChannel } from '@supabase/supabase-js';
 import { type Database } from '@/types/supabase';
 import { Icon } from '@iconify/react';
+import useSWR from 'swr'; // Import useSWR
 
 type JobStatus = Database['public']['Enums']['upload_job_status'];
 interface UploadJobState {
@@ -18,9 +19,17 @@ interface UploadJobState {
   message: string;
 }
 
+type MarketRegion = {
+  id: string;
+  name: string;
+};
+
+// Fetcher for market regions
+const fetcher = (url: string) => fetch(url).then(res => res.json());
+
 export function LeadsUpload() {
   const [file, setFile] = useState<File | null>(null);
-  const [marketRegion, setMarketRegion] = useState<string>('');
+  const [marketRegionId, setMarketRegionId] = useState<string>(''); // Changed to ID
   const [error, setError] = useState<string>('');
 
   const [jobState, setJobState] = useState<UploadJobState>({
@@ -31,6 +40,9 @@ export function LeadsUpload() {
   });
 
   const channelRef = useRef<RealtimeChannel | null>(null);
+
+  // Fetch market regions for the dropdown
+  const { data: marketRegions, isLoading: isLoadingRegions } = useSWR<MarketRegion[]>('/api/market-regions', fetcher);
 
   useEffect(() => {
     return () => {
@@ -55,7 +67,7 @@ export function LeadsUpload() {
 
   const handleReset = () => {
     setFile(null);
-    setMarketRegion('');
+    setMarketRegionId(''); // Reset market region ID
     setError('');
     setJobState({ jobId: null, status: 'INITIAL', progress: 0, message: '' });
     if (channelRef.current) {
@@ -65,8 +77,10 @@ export function LeadsUpload() {
   };
 
   const handleUpload = async () => {
-    if (!file || !marketRegion.trim()) {
-      setError('Please select a file and define a market region.');
+    // Find the market region name from its ID
+    const selectedRegion = marketRegions?.find(r => r.id === marketRegionId);
+    if (!file || !selectedRegion?.name) {
+      setError('Please select a file and a market region.');
       return;
     }
     setError('');
@@ -95,7 +109,7 @@ export function LeadsUpload() {
         if (status === 'SUBSCRIBED') {
           const formData = new FormData();
           formData.append('file', file);
-          formData.append('market_region', marketRegion.trim());
+          formData.append('market_region', selectedRegion.name); // Send the name
           formData.append('job_id', newJobId);
           setJobState(prevState => ({ ...prevState, progress: 10, message: 'Uploading file...' }));
           
@@ -112,10 +126,10 @@ export function LeadsUpload() {
               const errorBody = await response.json().catch(() => ({ message: 'An unknown server error occurred.' }));
               throw new Error(errorBody.message || 'The server could not process the upload.');
             }
+            // The actual progress updates will come via the realtime channel
+            // This just confirms the initial API call was accepted
+            // setJobState(prevState => ({ ...prevState, progress: 20, status: 'PROCESSING', message: 'Upload accepted, processing on server...' }));
             return response.json();
-          })
-          .then(() => {
-            setJobState(prevState => ({ ...prevState, progress: 40, status: 'PROCESSING', message: 'Upload accepted. Server is processing the file...' }));
           })
           .catch(err => {
             setError(err.message);
@@ -137,7 +151,7 @@ export function LeadsUpload() {
     return (
       <div className="flex flex-col items-center justify-center h-full p-4 space-y-4">
         <div className="text-center">
-          <p className={`text-lg font-medium text-${progressColor}`}>{jobState.status}</p>
+          <p className={`text-lg font-medium text-${progressColor}-600`}>{jobState.status}</p>
           <p className="text-sm text-default-500 mt-1">{jobState.message}</p>
         </div>
         <Progress
@@ -157,12 +171,21 @@ export function LeadsUpload() {
 
   return (
     <div className="flex flex-col h-full p-2 space-y-4">
-      <Input
+      <Select
         label="Market Region"
-        placeholder="e.g., Dallas / Fort Worth"
-        value={marketRegion}
-        onValueChange={setMarketRegion}
-      />
+        placeholder="Select a target market"
+        selectedKeys={marketRegionId ? [marketRegionId] : []}
+        onChange={(e) => setMarketRegionId(e.target.value)}
+        isLoading={isLoadingRegions}
+        isDisabled={isLoadingRegions}
+        isRequired
+      >
+        {(marketRegions || []).map((region) => (
+          <SelectItem key={region.id} textValue={region.name}>
+            {region.name}
+          </SelectItem>
+        ))}
+      </Select>
       <div {...getRootProps()} className={`flex-grow flex items-center justify-center p-4 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors ${isDragActive ? 'border-primary bg-primary-50' : 'border-default-200 hover:border-default-400'}`}>
         <input {...getInputProps()} />
         <div className="text-center text-default-500">
@@ -175,7 +198,7 @@ export function LeadsUpload() {
         </div>
       </div>
       {error && <p className="text-danger text-xs text-center">{error}</p>}
-      <Button color="primary" onPress={handleUpload} disabled={!file || !marketRegion.trim()}>
+      <Button color="primary" onPress={handleUpload} disabled={!file || !marketRegionId}>
         Upload and Process
       </Button>
     </div>

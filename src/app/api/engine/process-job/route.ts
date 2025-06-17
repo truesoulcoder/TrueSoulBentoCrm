@@ -8,6 +8,7 @@ import { configure } from 'nunjucks';
 import path from 'path';
 // FIX: Import the Json type
 import type { Database, Json } from '@/types/supabase';
+import { logSystemEvent } from '@/services/logService'; // Import the logging service
 
 type Lead = Database['public']['Tables']['crm_leads']['Row'];
 type Sender = Database['public']['Tables']['senders']['Row'];
@@ -17,19 +18,30 @@ const templateDir = path.join(process.cwd(), 'src', 'app', 'api', 'engine', 'tem
 const nunjucksEnv = configure(templateDir, { autoescape: true, noCache: true });
 
 // FIX: Change the type of the 'details' parameter from 'object' to 'Json'
-async function logJobOutcome(supabase: Awaited<ReturnType<typeof createAdminServerClient>>, jobId: string, message: string, details?: Json) {
-  const { error } = await supabase.from('job_logs').insert({ job_id: jobId, log_message: message, details: details || {} });
-  if (error) {
-    console.error(`CRITICAL: Failed to log outcome for job ${jobId}:`, error);
-  }
+async function logJobOutcome(supabase: Awaited<ReturnType<typeof createAdminServerClient>>, jobId: string, message: string, details?: Json, level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG' = 'INFO') {
+  await logSystemEvent({
+    event_type: 'CAMPAIGN_JOB_OUTCOME',
+    message: message,
+    details: { jobId, ...details },
+    campaign_id: details?.campaign_id as string, // Assuming campaign_id might be in details
+    lead_id: details?.lead_id as string, // Assuming lead_id might be in details
+    level: level
+  });
 }
 
 export async function POST(request: NextRequest) {
   const supabase = await createAdminServerClient();
   let jobId: string | null = null;
+  let leadId: string | null = null; // Track lead_id for logging
+  let campaignId: string | null = null; // Track campaign_id for logging
 
   const authHeader = request.headers.get('Authorization');
   if (authHeader !== `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`) {
+    await logSystemEvent({
+      event_type: 'PROCESS_JOB_AUTH_ERROR',
+      message: 'Unauthorized access to process-job API.',
+      level: 'ERROR'
+    });
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -38,8 +50,21 @@ export async function POST(request: NextRequest) {
     jobId = body.job_id;
 
     if (!jobId) {
+      await logSystemEvent({
+        event_type: 'PROCESS_JOB_VALIDATION_ERROR',
+        message: "Request body must include a 'job_id'.",
+        details: { requestBody: body },
+        level: 'ERROR'
+      });
       throw new Error("Request body must include a 'job_id'.");
     }
+
+    await logSystemEvent({
+      event_type: 'CAMPAIGN_JOB_START',
+      message: `Attempting to process campaign job: ${jobId}`,
+      details: { jobId },
+      level: 'INFO'
+    });
 
     const { data: jobData, error: jobError } = await supabase
       .from('campaign_jobs')
@@ -47,17 +72,59 @@ export async function POST(request: NextRequest) {
       .eq('id', jobId)
       .single();
 
-    if (jobError) throw new Error(`Database error fetching job: ${jobError.message}`);
-    if (!jobData) throw new Error(`Job with ID ${jobId} not found.`);
+    if (jobError) {
+      await logSystemEvent({
+        event_type: 'CAMPAIGN_JOB_DB_FETCH_ERROR',
+        message: `Database error fetching job ${jobId}.`,
+        details: { jobId, dbError: jobError.message },
+        level: 'ERROR'
+      });
+      throw new Error(`Database error fetching job: ${jobError.message}`);
+    }
+    if (!jobData) {
+      await logSystemEvent({
+        event_type: 'CAMPAIGN_JOB_NOT_FOUND',
+        message: `Job with ID ${jobId} not found.`,
+        details: { jobId },
+        level: 'ERROR'
+      });
+      throw new Error(`Job with ID ${jobId} not found.`);
+    }
 
     const lead = jobData.crm_leads as unknown as Lead;
     const campaignSteps = jobData.campaigns?.campaign_steps as unknown as CampaignStep[] | undefined;
+    
+    leadId = lead.id; // Capture lead_id
+    campaignId = jobData.campaign_id; // Capture campaign_id
 
-    if (!lead) throw new Error(`Lead data is missing for job ${jobId}.`);
-    if (!campaignSteps || campaignSteps.length === 0) throw new Error(`No campaign steps found for job ${jobId}.`);
+    if (!lead) {
+      await logSystemEvent({
+        event_type: 'CAMPAIGN_JOB_MISSING_LEAD_DATA',
+        message: `Lead data is missing for job ${jobId}.`,
+        details: { jobId, campaignId },
+        level: 'ERROR'
+      });
+      throw new Error(`Lead data is missing for job ${jobId}.`);
+    }
+    if (!campaignSteps || campaignSteps.length === 0) {
+      await logSystemEvent({
+        event_type: 'CAMPAIGN_JOB_MISSING_STEPS',
+        message: `No campaign steps found for job ${jobId}.`,
+        details: { jobId, campaignId },
+        level: 'ERROR'
+      });
+      throw new Error(`No campaign steps found for job ${jobId}.`);
+    }
     
     const currentStep = campaignSteps[0]; 
     
+    await logSystemEvent({
+      event_type: 'CAMPAIGN_JOB_FETCHING_SENDER',
+      message: `Fetching available sender for job ${jobId} (lead: ${leadId}).`,
+      details: { jobId, campaignId, leadId },
+      level: 'DEBUG'
+    });
+
     const { data: senders, error: senderError } = await supabase
       .from('senders')
       .select('*')
@@ -65,9 +132,32 @@ export async function POST(request: NextRequest) {
       .lt('sent_today', 100)
       .limit(1);
 
-    if (senderError) throw new Error(`Database error fetching sender: ${senderError.message}`);
-    if (!senders || senders.length === 0) throw new Error('No available email senders found that are under quota.');
+    if (senderError) {
+      await logSystemEvent({
+        event_type: 'CAMPAIGN_JOB_SENDER_FETCH_ERROR',
+        message: `Database error fetching sender for job ${jobId}.`,
+        details: { jobId, campaignId, leadId, dbError: senderError.message },
+        level: 'ERROR'
+      });
+      throw new Error(`Database error fetching sender: ${senderError.message}`);
+    }
+    if (!senders || senders.length === 0) {
+      await logSystemEvent({
+        event_type: 'CAMPAIGN_JOB_NO_SENDER_AVAILABLE',
+        message: `No available email senders found under quota for job ${jobId}.`,
+        details: { jobId, campaignId, leadId },
+        level: 'WARN'
+      });
+      throw new Error('No available email senders found that are under quota.');
+    }
     const sender = senders[0] as Sender;
+
+    await logSystemEvent({
+      event_type: 'CAMPAIGN_JOB_SENDER_ASSIGNED',
+      message: `Sender ${sender.sender_email} assigned for job ${jobId}.`,
+      details: { jobId, campaignId, leadId, senderEmail: sender.sender_email },
+      level: 'DEBUG'
+    });
 
     const offerDetails = generateOfferDetails(lead.assessed_total ?? 0, lead.contact_name);
     
@@ -89,8 +179,30 @@ export async function POST(request: NextRequest) {
     const subject = nunjucksEnv.renderString(currentStep.subject_template || "Offer for your property at {{property_address}}", personalizationData);
     const htmlBody = nunjucksEnv.render('email_body_with_subject.html', personalizationData);
     
+    await logSystemEvent({
+      event_type: 'CAMPAIGN_JOB_PDF_GENERATION_START',
+      message: `Generating PDF for job ${jobId}.`,
+      details: { jobId, campaignId, leadId, propertyAddress: personalizationData.property_address },
+      level: 'DEBUG'
+    });
+
     const pdfBuffer = await generateLoiPdf(personalizationData, String(lead.id), lead.contact_email || 'unknown');
-    if (!pdfBuffer) throw new Error("PDF generation failed and returned no buffer.");
+    if (!pdfBuffer) {
+      await logSystemEvent({
+        event_type: 'CAMPAIGN_JOB_PDF_GENERATION_FAILED',
+        message: `PDF generation failed for job ${jobId}.`,
+        details: { jobId, campaignId, leadId, propertyAddress: personalizationData.property_address },
+        level: 'ERROR'
+      });
+      throw new Error("PDF generation failed and returned no buffer.");
+    }
+
+    await logSystemEvent({
+      event_type: 'CAMPAIGN_JOB_EMAIL_SEND_START',
+      message: `Attempting to send email for job ${jobId} to ${lead.contact_email}.`,
+      details: { jobId, campaignId, leadId, recipient: lead.contact_email, subject },
+      level: 'INFO'
+    });
 
     const emailResult = await sendEmail(
       sender.sender_email,
@@ -102,12 +214,24 @@ export async function POST(request: NextRequest) {
 
     if (!emailResult.success) {
       const errorMessage = String(emailResult.error || "Unknown email sending error.");
+      await logSystemEvent({
+        event_type: 'CAMPAIGN_JOB_EMAIL_SEND_FAILED',
+        message: `Email sending failed for job ${jobId}: ${errorMessage}`,
+        details: { jobId, campaignId, leadId, recipient: lead.contact_email, error: errorMessage },
+        level: 'ERROR'
+      });
       throw new Error(errorMessage);
     }
     
     await supabase.from('campaign_jobs').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', jobId);
     await supabase.rpc('increment_sender_sent_count', { sender_id: sender.id });
-    await logJobOutcome(supabase, jobId, 'Job processed and email sent successfully.', { messageId: emailResult.globalMessageId });
+    
+    await logSystemEvent({
+      event_type: 'CAMPAIGN_JOB_COMPLETED',
+      message: `Job ${jobId} processed and email sent successfully.`,
+      details: { jobId, campaignId, leadId, recipient: lead.contact_email, messageId: emailResult.globalMessageId, senderEmail: sender.sender_email },
+      level: 'INFO'
+    });
 
     return NextResponse.json({ success: true, message: `Job ${jobId} processed.` });
 
@@ -115,7 +239,19 @@ export async function POST(request: NextRequest) {
     console.error(`[PROCESS-JOB-ERROR] Job ID ${jobId || 'N/A'}:`, error.message);
     if (jobId) {
       await supabase.from('campaign_jobs').update({ status: 'failed', updated_at: new Date().toISOString() }).eq('id', jobId);
-      await logJobOutcome(supabase, jobId, 'Job processing failed.', { error: error.message });
+      await logSystemEvent({
+        event_type: 'CAMPAIGN_JOB_FAILED',
+        message: `Job processing failed for job ${jobId}: ${error.message}`,
+        details: { jobId, campaignId, leadId, error: error.message },
+        level: 'ERROR'
+      });
+    } else {
+        await logSystemEvent({
+          event_type: 'PROCESS_JOB_UNKNOWN_FAILURE',
+          message: `Unknown job processing failure: ${error.message}`,
+          details: { error: error.message },
+          level: 'ERROR'
+        });
     }
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

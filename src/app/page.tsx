@@ -16,14 +16,16 @@ export default async function Home() {
 
   // Extract user and role. Default to a non-privileged role if not set.
   const user = session.user;
-  const userRole = user.user_metadata?.user_role || 'guest';
-  
+  const userRole = (user.user_metadata?.user_role as string) || 'guest';
+  const userId = user.id; // Get the user ID
+
   // This Server Component's job is now simply to perform authentication
-  // and pass the user's role to the client-side dashboard wrapper.
+  // and pass the user's role and ID to the client-side dashboard wrapper.
   // The wrapper will be responsible for rendering the DraggableDashboard.
   return (
     <CampaignDashboardWrapper
       userRole={userRole}
+      userId={userId} // Pass the userId to the wrapper
     />
   );
 }

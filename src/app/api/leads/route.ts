@@ -1,7 +1,8 @@
 // src/app/api/leads/route.ts
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import redis from '@/lib/redis';
+import { logSystemEvent } from '@/services/logService';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,32 +12,75 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search') || '';
   const region = searchParams.get('region') || 'all';
+  const requestedUserId = searchParams.get('userId'); // Get the userId requested from the client
 
-  const cacheKey = `leads:v2:region:${region}:search:${search || 'none'}`;
+  const supabase = await createClient(); // Use regular client for auth check
+
+  // Authenticate user and get their role
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    await logSystemEvent({
+      event_type: 'LEADS_API_AUTH_ERROR',
+      message: 'Unauthorized access to leads API.',
+      level: 'ERROR',
+      details: { authError: authError?.message }
+    });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const isSuperAdmin = (user.user_metadata?.user_role as string) === 'superadmin';
+  const effectiveUserId = isSuperAdmin ? null : user.id; // If not superadmin, only allow filtering by their own ID
+
+  // Construct cache key based on all relevant filters and user role
+  const cacheKey = `leads:v2:region:${region}:search:${search || 'none'}:user:${effectiveUserId || 'all'}`;
 
   // Resilient Caching: Tries to get from cache but continues if Redis fails.
   try {
     const cachedData = await redis.get(cacheKey);
     if (cachedData) {
-      console.log(`[CACHE HIT] Serving from cache: ${cacheKey}`);
+      await logSystemEvent({
+        event_type: 'LEADS_API_CACHE_HIT',
+        message: `Serving leads from cache for key: ${cacheKey}`,
+        level: 'DEBUG',
+        details: { cacheKey, userId: user.id }
+      });
       return NextResponse.json(JSON.parse(cachedData));
     }
   } catch (cacheError) {
     console.error(`[LEADS CACHE READ ERROR] for key ${cacheKey}. Falling back to DB.`, cacheError);
+    await logSystemEvent({
+      event_type: 'LEADS_API_CACHE_READ_ERROR',
+      message: `Failed to read leads from cache for key: ${cacheKey}`,
+      level: 'WARN',
+      details: { cacheKey, cacheError: cacheError instanceof Error ? cacheError.message : String(cacheError) }
+    });
   }
 
-  console.log(`[CACHE MISS] Fetching from database: ${cacheKey}`);
+  await logSystemEvent({
+    event_type: 'LEADS_API_CACHE_MISS',
+    message: `Fetching leads from database for key: ${cacheKey}`,
+    level: 'DEBUG',
+    details: { cacheKey, userId: user.id }
+  });
 
   try {
-    const supabase = await createClient();
-
-    // Call the optimized SQL function search_properties_with_contacts
+    // We use the authenticated user's supabase client here because RLS policies
+    // will automatically filter by `user_id` if they are not a superadmin.
+    // The `search_properties_with_contacts` function itself doesn't need a user ID
+    // as it operates on the underlying `properties` table which has RLS.
     const { data: rpcData, error: rpcError } = await supabase.rpc('search_properties_with_contacts', {
       search_term: search // Pass the search term from the request
     });
 
     if (rpcError) {
       console.error('Supabase RPC error fetching leads:', { message: rpcError.message });
+      await logSystemEvent({
+        event_type: 'LEADS_API_RPC_ERROR',
+        message: `Supabase RPC error fetching leads: ${rpcError.message}`,
+        level: 'ERROR',
+        details: { rpcError: rpcError.message, search_term: search, region, userId: user.id }
+      });
       throw new Error(`Failed to fetch leads via RPC: ${rpcError.message}`);
     }
 
@@ -47,19 +91,38 @@ export async function GET(request: NextRequest) {
     if (region && region !== 'all' && Array.isArray(rpcData)) {
       processedData = rpcData.filter((lead: any) => lead.market_region === region);
     }
+    
+    // For non-superadmins, the RLS policy on the 'properties' table should already handle filtering.
+    // However, if the RPC function bypasses RLS (which it generally shouldn't if security definer
+    // is set up correctly with `auth.uid()`), this additional filter ensures data integrity.
+    // Given the `search_properties_with_contacts` function does `p.*` and `pc.*` where `p` is properties,
+    // and `properties` table has `auth.uid() = user_id` RLS for non-superadmins, this should be implicitly filtered.
+    // But to be explicit and safe:
+    if (!isSuperAdmin && effectiveUserId && Array.isArray(processedData)) {
+      processedData = processedData.filter((lead: any) => lead.user_id === effectiveUserId);
+    }
 
-    // Use processedData for caching and response
     const data = processedData;
-    // The rpcError is handled above. If we reach here, it means the RPC call was successful or did not throw an error that wasn't caught.
-    // The 'error' variable is no longer needed here as its role is replaced by rpcError handling.
 
     // Resilient Caching: Tries to write to cache but doesn't fail the request if it can't.
     try {
       if (data) {
         await redis.set(cacheKey, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
+        await logSystemEvent({
+          event_type: 'LEADS_API_CACHE_SET',
+          message: `Set leads cache for key: ${cacheKey}`,
+          level: 'DEBUG',
+          details: { cacheKey, numResults: data.length, userId: user.id }
+        });
       }
     } catch (cacheError) {
       console.error(`[LEADS CACHE WRITE ERROR] for key ${cacheKey}.`, cacheError);
+      await logSystemEvent({
+        event_type: 'LEADS_API_CACHE_WRITE_ERROR',
+        message: `Failed to write leads to cache for key: ${cacheKey}`,
+        level: 'WARN',
+        details: { cacheKey, cacheError: cacheError instanceof Error ? cacheError.message : String(cacheError) }
+      });
     }
 
     return NextResponse.json(data || []);
@@ -67,6 +130,12 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     console.error('Error in GET /api/leads:', errorMessage);
+    await logSystemEvent({
+      event_type: 'LEADS_API_UNEXPECTED_ERROR',
+      message: `Unexpected error in GET /api/leads: ${errorMessage}`,
+      level: 'ERROR',
+      details: { error: errorMessage, search_term: search, region, userId: user.id }
+    });
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

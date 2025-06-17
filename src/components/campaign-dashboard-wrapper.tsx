@@ -15,11 +15,15 @@ export type LeadWithProperties = Database['public']['Tables']['campaign_leads'][
   properties?: Database['public']['Tables']['properties']['Row'] | null;
 };
 
+interface CampaignDashboardWrapperProps {
+  userRole: string;
+  userId: string; // Add userId prop
+}
+
 export function CampaignDashboardWrapper({
   userRole,
-}: {
-  userRole: string;
-}) {
+  userId, // Destructure userId
+}: CampaignDashboardWrapperProps) {
   const [isEditMode, setIsEditMode] = useState(false);
   const { theme, setTheme } = useTheme();
   const router = useRouter();
@@ -47,8 +51,8 @@ export function CampaignDashboardWrapper({
               color="primary"
               onPress={() => setIsEditMode(!isEditMode)}
               startContent={<Icon icon="lucide:layout" className="hidden md:block" />}
-              isIconOnly={true}
-              className="md:not-is-icon-only"
+              isIconOnly={false} // Ensure text is shown on larger screens
+              className="md:not-is-icon-only px-4 py-2" // Add padding to prevent truncation
             >
              <span className="hidden md:block">{isEditMode ? 'Save Layout' : 'Edit Layout'}</span>
             </Button>
@@ -78,6 +82,7 @@ export function CampaignDashboardWrapper({
           currentCampaign={currentCampaign}
           isEditMode={isEditMode}
           userRole={userRole}
+          userId={userId} // Pass userId to DraggableDashboard
         />
       </main>
     </div>
