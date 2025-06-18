@@ -1,6 +1,7 @@
-// --- Drop-in Replacement for your Service File ---
+// src/services/gmailService.ts
 import { google } from 'googleapis';
 import type { gmail_v1 } from 'googleapis';
+import { JWT } from 'google-auth-library';
 
 // Define a more descriptive return type
 export interface GmailSendResult {
@@ -8,20 +9,36 @@ export interface GmailSendResult {
   internalId?: string;       // The short ID, e.g., '1973e2ad2ea3f111'
   globalMessageId?: string;  // The correct, long ID, e.g., '<...-GMR@mx.google.com>'
   threadId?: string;
-  messageId?: string;        // @deprecated - use globalMessageId instead
   error?: unknown;
 }
 
 /**
- * Initializes and returns a Gmail client for the given email address
- * @param impersonatedUserEmail - Email address to authenticate as
- * @returns Initialized Gmail client
+ * Initializes and returns an authenticated Gmail client for a specific user.
+ * This function uses a service account with domain-wide delegation to impersonate the user.
+ * @param impersonatedUserEmail - The email address of the user to impersonate.
+ * @returns An initialized and authenticated Gmail client instance.
+ * @throws Will throw an error if environment variables are not set.
  */
 export function getGmailService(impersonatedUserEmail: string): gmail_v1.Gmail {
-  // TODO: Implement actual Gmail service initialization with proper auth
-  // This is a placeholder - you should implement proper Google Auth
-  return google.gmail({ version: 'v1' });
+  const serviceAccountKeyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+
+  if (!serviceAccountKeyJson) {
+    throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY is not set in environment variables.');
+  }
+
+  const credentials = JSON.parse(serviceAccountKeyJson);
+
+  // Create a new JWT client for the service account
+  const auth = new JWT({
+    email: credentials.client_email,
+    key: credentials.private_key,
+    scopes: ['https://www.googleapis.com/auth/gmail.send'],
+    subject: impersonatedUserEmail, // Impersonate the user
+  });
+
+  return google.gmail({ version: 'v1', auth });
 }
+
 
 /**
  * Send an email using Gmail API and retrieves the globally unique Message-ID.
@@ -40,50 +57,46 @@ export async function sendEmail(
   attachments?: { filename: string; content: Buffer; contentType?: string; contentId?: string }[]
 ): Promise<GmailSendResult> {
   try {
-    // Get the Gmail service for the impersonated user
-    // NOTE: Ensure this helper correctly initializes and returns the gmail client
     const gmail = getGmailService(impersonatedUserEmail);
 
-    // Create a MIME message
-    // Using multipart/related is better for mixed inline (logo) and regular attachments
     const boundary = `----=_Part_Boundary_${Math.random().toString(36).substring(2)}`;
-    const message = [
+    const messageParts = [
       `From: <${impersonatedUserEmail}>`,
       `To: <${recipientEmail}>`,
       `Subject: ${subject}`,
       `MIME-Version: 1.0`,
       `Content-Type: multipart/related; boundary="${boundary}"`,
-      ``,
+      '',
       `--${boundary}`,
       `Content-Type: text/html; charset="utf-8"`,
       `Content-Transfer-Encoding: 7bit`,
-      ``,
+      '',
       htmlBody,
-      ``,
+      '',
     ];
 
     if (attachments && attachments.length > 0) {
       for (const file of attachments) {
-        message.push(`--${boundary}`);
-        message.push(`Content-Type: ${file.contentType || 'application/octet-stream'}`);
-        message.push(`Content-Transfer-Encoding: base64`);
+        messageParts.push(`--${boundary}`);
+        messageParts.push(`Content-Type: ${file.contentType || 'application/octet-stream'}`);
+        messageParts.push(`Content-Transfer-Encoding: base64`);
         if (file.contentId) {
-          message.push(`Content-ID: <${file.contentId}>`);
-          message.push(`Content-Disposition: inline; filename="${file.filename}"`);
+          messageParts.push(`Content-ID: <${file.contentId}>`);
+          messageParts.push(`Content-Disposition: inline; filename="${file.filename}"`);
         } else {
-          message.push(`Content-Disposition: attachment; filename="${file.filename}"`);
+          messageParts.push(`Content-Disposition: attachment; filename="${file.filename}"`);
         }
-        message.push(``);
-        message.push(file.content.toString('base64'));
+        messageParts.push('');
+        messageParts.push(file.content.toString('base64'));
       }
     }
-    message.push(`--${boundary}--`);
+    messageParts.push(`--${boundary}--`);
 
-    const rawMessage = Buffer.from(message.join('\r\n')).toString('base64url');
+    const rawMessage = Buffer.from(messageParts.join('\r\n')).toString('base64url');
 
     // --- STEP 1: Send the email ---
     const sendResponse = await gmail.users.messages.send({
-      userId: impersonatedUserEmail,
+      userId: 'me', // 'me' refers to the impersonated user
       requestBody: { raw: rawMessage },
     });
 
@@ -95,15 +108,13 @@ export async function sendEmail(
     }
 
     // --- STEP 2: CRITICAL FIX - GET THE MESSAGE METADATA ---
-    // Use the internalId to fetch the metadata of the sent message
     const getResponse = await gmail.users.messages.get({
-      userId: impersonatedUserEmail,
+      userId: 'me',
       id: internalId,
       format: 'metadata',
       metadataHeaders: ['Message-ID'], // Efficiently fetch only the header we need
     });
 
-    // Find and extract the correct, globally-unique Message-ID
     const messageIdHeader = getResponse.data.payload?.headers?.find(
       (h: any) => h.name?.toLowerCase() === 'message-id'
     );
@@ -120,7 +131,7 @@ export async function sendEmail(
       success: true,
       internalId,
       threadId: threadId || undefined,
-      globalMessageId, // This is the correct ID for tracking
+      globalMessageId,
     };
 
   } catch (error) {
