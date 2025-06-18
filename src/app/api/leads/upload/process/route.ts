@@ -69,10 +69,10 @@ async function processCsv(
     // IMPORTANT: Adjust the mapping logic below to match your CSV columns and 'properties' table structure.
     const leadsToInsert = parsedCsvRecords.map(csvRecord => ({
       // Example: map 'Property Address' CSV column to 'property_address' table column
-      property_address: csvRecord['Property Address'] || csvRecord['address'], 
-      property_city: csvRecord['City'] || csvRecord['city'],
-      property_state: csvRecord['State'] || csvRecord['state'],
-      property_zip: csvRecord['Zip Code'] || csvRecord['zip'],
+      property_address: csvRecord['PropertyAddress'],
+      property_city: csvRecord['PropertyCity'],
+      property_postal_code: csvRecord['PropertyPostalCode'],
+      property_state: csvRecord['PropertyState'],
       // Add other relevant lead fields from your CSV
       // Assuming your 'properties' table has these columns:
       market_region_id: marketRegionId,
