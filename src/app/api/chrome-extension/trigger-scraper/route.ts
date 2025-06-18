@@ -1,57 +1,17 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminServerClient } from '@/lib/supabase/server';
 import { Database } from '@/types/supabase';
 
 // Create a Supabase client
-const createServerClient = async () => {
-  const cookieStore = await cookies();
-  
-  // Get session cookie (this would be set by your middleware)
-  const supabaseToken = cookieStore.get('supabase-auth-token')?.value;
-  
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        persistSession: false,
-        // If we have a session token in cookies, use it
-        ...(supabaseToken && {
-          autoRefreshToken: false,
-          detectSessionInUrl: false,
-        })
-      },
-      global: {
-        headers: {
-          // If we have a session cookie, use it as Authorization
-          ...(supabaseToken && {
-            Authorization: `Bearer ${supabaseToken}`,
-          }),
-        },
-      },
-    }
-  );
-};
+
 
 export async function POST(request: Request) {
   try {
-    // Get Supabase client
-    const supabase = await createServerClient();
-    
-    // Get user from the session (middleware would have checked this already, 
-    // but we'll double-check to be safe)
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      return NextResponse.json({
-        success: false,
-        error: 'Authentication required'
-      }, { status: 401 });
-    }
-    
-    // Parse request body
+    const supabase = await createAdminServerClient();
     const { url, userAgent, title } = await request.json();
+    if (!url || !url.includes('zillow.com')) {
+      return NextResponse.json({ success: false, error: 'Valid Zillow URL required' }, { status: 400 });
+    }
     
     if (!url || !url.includes('zillow.com')) {
       return NextResponse.json({
@@ -60,13 +20,11 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Insert a new job record
     const { data: job, error } = await supabase
       .from('zillow_scraper_jobs')
       .insert({
         zillow_url: url,
-        user_agent: userAgent || navigator.userAgent,
-        created_by: user.id,
+        user_agent: userAgent || '',
         status: 'pending'
       })
       .select('id')
