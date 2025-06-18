@@ -94,23 +94,11 @@ async function processCsv(
 
     await supabase.from('upload_jobs').update({ progress: 70, message: `${leadsToInsert.length} leads inserted. Updating market region stats...` }).eq('job_id', jobId);
 
-    // 5. Update Lead Count in market_regions table
-    // Fetch current lead_count first to avoid race conditions if not using an atomic increment function
-    const { data: currentRegion, error: fetchCountError } = await supabase
-      .from('market_regions')
-      .select('lead_count')
-      .eq('id', marketRegionId)
-      .single();
-
-    if (fetchCountError) {
-      throw new Error(`Failed to fetch current lead count for market region: ${fetchCountError.message}`);
-    }
-
-    const newLeadCount = (currentRegion?.lead_count || 0) + leadsToInsert.length;
-    const { error: updateCountError } = await supabase
-      .from('market_regions')
-      .update({ lead_count: newLeadCount, updated_at: new Date().toISOString(), last_processed_at: new Date().toISOString() })
-      .eq('id', marketRegionId);
+    // 5. Atomically update Lead Count in market_regions table
+    const { error: updateCountError } = await supabase.rpc('increment_lead_count', {
+      region_id: marketRegionId,
+      increment_value: leadsToInsert.length,
+    });
 
     if (updateCountError) {
       // Log this error but don't fail the whole job, as leads are already inserted.
