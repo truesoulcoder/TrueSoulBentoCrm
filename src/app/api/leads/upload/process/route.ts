@@ -1,243 +1,119 @@
-// src/app/api/leads/upload/process/route.ts
-import { createAdminServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { parse } from 'csv-parse';
-import { Readable } from 'stream';
-
-// This function will contain the core CSV processing logic
-async function processCsv(
-  jobId: string,
-  userId: string,
-  fileContent: Buffer,
-  marketRegionName: string,
-  filePath: string // Added for deletion on failure
-) {
-  const supabase = await createAdminServerClient();
-
-  // Idempotency check: if job status is COMPLETE or FAILED, log and return
-  const { data: jobStatus, error: jobStatusError } = await supabase
-    .from('upload_jobs')
-    .select('status')
-    .eq('job_id', jobId)
-    .single();
-
-  if (jobStatusError || !jobStatus) {
-    console.error(`[PROCESS_CSV_IDEMPOTENCY_ERROR] Job ${jobId}: Unable to fetch job status.`);
-    return;
-  }
-
-  if (jobStatus.status === 'COMPLETE' || jobStatus.status === 'FAILED') {
-    console.log(`[PROCESS_CSV_IDEMPOTENCY_SKIP] Job ${jobId}: Already ${jobStatus.status}, skipping processing.`);
-    return;
-  }
-
-  try {
-    await supabase.from('upload_jobs').update({ status: 'PROCESSING', progress: 5, message: 'Initializing processing...' }).eq('job_id', jobId);
-
-    // 1. Parse CSV
-    await supabase.from('upload_jobs').update({ progress: 10, message: 'Parsing CSV...' }).eq('job_id', jobId);
-    const parsedCsvRecords: any[] = [];
-    const parser = Readable.from(fileContent).pipe(parse({ columns: true, trim: true, skip_empty_lines: true }));
-    for await (const record of parser) {
-      parsedCsvRecords.push(record);
-    }
-
-    if (parsedCsvRecords.length === 0) {
-      await supabase.from('upload_jobs').update({ status: 'FAILED', progress: 100, message: 'CSV file is empty or contains no valid records.' }).eq('job_id', jobId);
-      return;
-    }
-    await supabase.from('upload_jobs').update({ progress: 20, message: `Parsed ${parsedCsvRecords.length} records. Processing market region...` }).eq('job_id', jobId);
-
-    // 2. Upsert Market Region
-    // The 'normalized_name' column in 'market_regions' handles case-insensitivity and trimming for uniqueness.
-    const { data: regionData, error: regionError } = await supabase
-      .from('market_regions')
-      .upsert(
-        { name: marketRegionName, created_by: userId },
-        { onConflict: 'normalized_name', ignoreDuplicates: false }
-      )
-      .select('id')
-      .single();
-
-    if (regionError || !regionData) {
-      throw new Error(`Failed to upsert market region '${marketRegionName}': ${regionError?.message || 'No data returned'}`);
-    }
-    const marketRegionId = regionData.id;
-    await supabase.from('upload_jobs').update({ progress: 30, message: `Market region '${marketRegionName}' processed. Preparing leads...` }).eq('job_id', jobId);
-
-    await supabase.from('upload_jobs').update({ progress: 40, message: 'Leads prepared. Inserting into database...' }).eq('job_id', jobId);
-
-    // 4. Process each record using the transactional RPC function
-    let successfulInserts = 0;
-    for (const record of parsedCsvRecords) {
-      // Parse owner name (Contact1Name)
-      const ownerFullName = (record['Contact1Name'] || '').trim();
-      const [ownerFirstName, ...ownerLastParts] = ownerFullName.split(' ');
-      const ownerLastName = ownerLastParts.join(' ') || null;
-
-      const { data: newPropertyId, error: rpcError } = await supabase.rpc('create_lead_with_contact', {
-        p_property_address: record['PropertyAddress'],
-        p_property_city: record['PropertyCity'],
-        p_property_state: record['PropertyState'],
-        p_property_postal_code: record['PropertyPostalCode'],
-        p_market_region_id: marketRegionId,
-        p_user_id: userId,
-        p_status: record['Status'] || 'New Lead',
-        c_first_name: ownerFirstName || null,
-        c_last_name: ownerLastName,
-
-        c_email: record['Contact1Email_1'] || null,
-        c_phone: record['Contact1Phone_1'] || null,
-        c_role: 'owner',
-      });
-
-      if (rpcError || !newPropertyId) {
-        console.error(`Job ${jobId}: Failed to insert property '${record['PropertyAddress']}'. Error: ${rpcError?.message}`);
-        continue; // Skip to next record
-      }
-
-      successfulInserts++;
-
-      // Prepare and insert additional contacts (only those with a valid email)
-      const additionalContacts: any[] = [];
-
-      if (record['Contact2Email_1']) {
-        additionalContacts.push({
-          property_id: newPropertyId,
-          user_id: userId,
-          name: record['Contact2Name'] || null,
-          email: record['Contact2Email_1'],
-          phone: record['Contact2Phone_1'] || null,
-          role: 'alternate_contact',
-
-        });
-      }
-
-      if (record['Contact3Email_1']) {
-        additionalContacts.push({
-          property_id: newPropertyId,
-          user_id: userId,
-          name: record['Contact3Name'] || null,
-          email: record['Contact3Email_1'],
-          phone: record['Contact3Phone_1'] || null,
-          role: 'alternate_contact',
-
-        });
-      }
-
-      if (record['MLS_Curr_ListAgentEmail']) {
-        additionalContacts.push({
-          property_id: newPropertyId,
-          user_id: userId,
-          name: record['MLS_Curr_ListAgentName'] || null,
-          email: record['MLS_Curr_ListAgentEmail'],
-          phone: record['MLS_Curr_ListAgentPhone'] || null,
-          role: 'mls_agent',
-          mailing_address: null,
-        });
-      }
-
-      if (additionalContacts.length) {
-        const { error: contactsError } = await supabase.from('contacts').insert(additionalContacts);
-        if (contactsError) {
-          console.error(`Job ${jobId}: Failed to insert additional contacts for property ${newPropertyId}. Error: ${contactsError.message}`);
-        }
-      }
-    }
-
-    if (successfulInserts === 0 && parsedCsvRecords.length > 0) {
-        throw new Error('All lead insertions failed. Check logs for details.');
-    }
-
-    await supabase.from('upload_jobs').update({ progress: 70, message: `${successfulInserts} of ${parsedCsvRecords.length} leads inserted. Updating market region stats...` }).eq('job_id', jobId);
-
-    // 5. Atomically update Lead Count in market_regions table
-    const { error: updateCountError } = await supabase.rpc('increment_lead_count', {
-      region_id: marketRegionId,
-      increment_value: successfulInserts,
-    });
-
-    if (updateCountError) {
-      // Log this error but don't fail the whole job, as leads are already inserted.
-      console.error(`Job ${jobId}: Failed to update lead count for market region ${marketRegionId}: ${updateCountError.message}`);
-      await supabase.from('upload_jobs').update({ progress: 90, message: `Processing complete. Warning: Failed to update market region lead count.` }).eq('job_id', jobId);
-    } else {
-      await supabase.from('upload_jobs').update({ progress: 90, message: 'Market region stats updated.' }).eq('job_id', jobId);
-    }
-
-    await supabase.from('upload_jobs').update({ status: 'COMPLETE', progress: 100, message: 'Processing complete.' }).eq('job_id', jobId);
-
-  } catch (error: any) {
-    console.error(`[PROCESS_CSV_ERROR] Job ${jobId}:`, error.message);
-    await supabase
-      .from('upload_jobs')
-      .update({ status: 'FAILED', progress: 0, message: `Error: ${error.message}` })
-      .eq('job_id', jobId);
-
-    // Attempt to delete the file from storage on failure
-    try {
-      console.log(`[PROCESS_CSV_CLEANUP] Attempting to delete file ${filePath} for failed job ${jobId}`);
-      const { error: deleteError } = await supabase.storage.from('lead-uploads').remove([filePath]);
-      if (deleteError) {
-        console.error(`[PROCESS_CSV_CLEANUP_ERROR] Failed to delete file ${filePath} for job ${jobId}:`, deleteError.message);
-      } else {
-        console.log(`[PROCESS_CSV_CLEANUP_SUCCESS] Successfully deleted file ${filePath} for job ${jobId}`);
-      }
-    } catch (cleanupError: any) {
-      console.error(`[PROCESS_CSV_CLEANUP_EXCEPTION] Exception during file deletion for job ${jobId}:`, cleanupError.message);
-    }
-  }
-}
+import { createClient } from '@/utils/supabase/server';
+import { cookies } from 'next/headers';
+import Papa from 'papaparse';
 
 export async function POST(req: NextRequest) {
-  const { jobId, marketRegion } = await req.json(); // marketRegion here is marketRegionName
+  const cookieStore = cookies();
+  const supabase = createClient(cookieStore);
 
-  if (!jobId || !marketRegion) {
-    return NextResponse.json({ error: 'Job ID and market region name are required.' }, { status: 400 });
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const supabase = await createAdminServerClient();
+  const userId = session.user.id;
+  let formData;
+  try {
+    formData = await req.formData();
+  } catch (error) {
+    console.error('Error parsing form data:', error);
+    return NextResponse.json({ error: 'Invalid form data' }, { status: 400 });
+  }
+
+  const file = formData.get('file') as File;
+  const marketRegion = formData.get('marketRegion') as string;
+  const jobId = formData.get('jobId') as string;
+
+  if (!file || !marketRegion || !jobId) {
+    return NextResponse.json(
+      { error: 'Missing required fields: file, marketRegion, and jobId' },
+      { status: 400 }
+    );
+  }
 
   try {
-    // 1. Fetch job details to get user_id and file_name
-    await supabase.from('upload_jobs').update({ status: 'PROCESSING', message: 'Fetching job details...' }).eq('job_id', jobId);
-    const { data: job, error: jobError } = await supabase
-      .from('upload_jobs')
-      .select('user_id, file_name')
-      .eq('job_id', jobId)
-      .single();
+    const fileContent = await file.text();
 
-    if (jobError || !job || !job.user_id) {
-      throw new Error(`Job not found or user_id missing for ID: ${jobId}. Error: ${jobError?.message}`);
-    }
-    const userId = job.user_id; // Extracted userId
-
-    // 2. Download the file from Supabase Storage using the correct path
-    await supabase.from('upload_jobs').update({ status: 'PROCESSING', message: 'Downloading file from storage...' }).eq('job_id', jobId);
-    const filePath = `${userId}/${jobId}/${job.file_name}`;
-    const { data: fileData, error: downloadError } = await supabase.storage.from('lead-uploads').download(filePath);
-
-    if (downloadError) {
-      throw new Error(`Failed to download file from storage: ${downloadError.message}`);
-    }
-
-    const fileContentBuffer = Buffer.from(await fileData.arrayBuffer());
-
-    // 3. Process the file (this will run in the background)
-    // Pass userId to processCsv
-    processCsv(jobId, userId, fileContentBuffer, marketRegion, filePath).catch(async (e) => {
-        // This catch is for unhandled promise rejections from processCsv itself, though processCsv has its own try/catch.
-        console.error(`[UPLOAD_PROCESS_BG_UNHANDLED_ERROR] for job ${jobId}:`, e.message);
-        await supabase.from('upload_jobs').update({ status: 'FAILED', progress: 100, message: `Unhandled BG Error: ${e.message}` }).eq('job_id', jobId);
+    // Step 1: Parse the CSV file
+    const { data: records, errors: parseErrors } = Papa.parse(fileContent, {
+      header: true,
+      skipEmptyLines: true,
     });
 
-    // 4. Immediately return a response to the client
-    return NextResponse.json({ success: true, message: 'File processing started.', jobId });
+    if (parseErrors.length > 0) {
+      console.error('CSV parsing errors:', parseErrors);
+      // Optionally, update job status to failed
+      await supabase
+        .from('upload_jobs')
+        .update({ status: 'failed', message: 'Failed to parse CSV file.' })
+        .eq('job_id', jobId);
+      return NextResponse.json({ error: 'Failed to parse CSV file', details: parseErrors }, { status: 400 });
+    }
 
+    if (!records || records.length === 0) {
+        await supabase
+        .from('upload_jobs')
+        .update({ status: 'failed', message: 'CSV file is empty or contains no data.' })
+        .eq('job_id', jobId);
+      return NextResponse.json({ error: 'CSV file is empty or contains no data.' }, { status: 400 });
+    }
+
+    // Step 2: Update job status to 'processing'
+    await supabase
+      .from('upload_jobs')
+      .update({ status: 'processing', message: `Staging ${records.length} records...` })
+      .eq('job_id', jobId);
+
+    // Step 3: Perform a bulk insert into the staging table
+    const { error: stageError } = await supabase
+      .from('staging_contacts_csv')
+      .insert(records);
+
+    if (stageError) {
+      console.error('Error inserting into staging table:', stageError);
+      await supabase
+        .from('upload_jobs')
+        .update({ status: 'failed', message: 'Failed to stage data.' })
+        .eq('job_id', jobId);
+      return NextResponse.json({ error: 'Failed to stage data', details: stageError.message }, { status: 500 });
+    }
+
+    // Step 4: Call the database function to process the staged data
+    const { error: rpcError } = await supabase.rpc('import_leads_from_staging', {
+      p_job_id: jobId,
+      p_user_id: userId,
+      p_market_region: marketRegion
+    });
+
+    if (rpcError) {
+      console.error('Error calling import_leads_from_staging:', rpcError);
+      await supabase
+        .from('upload_jobs')
+        .update({ status: 'failed', message: 'Error during final import process.' })
+        .eq('job_id', jobId);
+      return NextResponse.json({ error: 'Error during final import process', details: rpcError.message }, { status: 500 });
+    }
+    
+    // Final success update
+    await supabase
+      .from('upload_jobs')
+      .update({ status: 'completed', progress: 100, message: 'Import completed successfully.' })
+      .eq('job_id', jobId);
+
+    return NextResponse.json({
+      message: 'File processed successfully.',
+      jobId: jobId,
+    });
   } catch (error: any) {
-    console.error(`[UPLOAD_PROCESS_API_ERROR] for job ${jobId}:`, error.message);
-    // Update the job with the error
-    await supabase.from('upload_jobs').update({ status: 'FAILED', progress: 100, message: error.message }).eq('job_id', jobId);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('Unhandled error during file processing:', error);
+    await supabase
+      .from('upload_jobs')
+      .update({ status: 'failed', message: 'An unexpected server error occurred.' })
+      .eq('job_id', jobId);
+    return NextResponse.json({ error: 'An unexpected server error occurred.', details: error.message }, { status: 500 });
   }
 }
