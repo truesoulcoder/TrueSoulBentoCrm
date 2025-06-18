@@ -2,62 +2,52 @@
 'use client';
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { supabase } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import { useDropzone } from 'react-dropzone';
-import { Button, Progress } from '@heroui/react';
-import { v4 as uuidv4 } from 'uuid';
+import { Button } from '@heroui/react';
 import { type RealtimeChannel } from '@supabase/supabase-js';
 import { type Database } from '@/types/supabase';
 import { Icon } from '@iconify/react';
-import FloatingLabelInput from './ui/FloatingLabelInput'; // Import the custom floating label input
+import FloatingLabelInput from './ui/FloatingLabelInput';
 
-type JobStatus = Database['public']['Enums']['upload_job_status'];
-interface UploadJobState {
-  jobId: string | null;
-  status: JobStatus | 'INITIAL';
-  progress: number;
+// The status can be a client-side status or a DB status from the 'upload_job_status' enum
+type JobStatus = Database['public']['Enums']['upload_job_status'] | 'IDLE' | 'READY' | 'UPLOADING';
+
+interface JobState {
+  file: File | null;
+  status: JobStatus;
+  progress: number; // This reflects backend processing progress
   message: string;
+  jobId: string | null;
 }
 
-export function LeadsUpload() {
-  const [file, setFile] = useState<File | null>(null);
-  // FIX: Change state to handle a typed-in region name instead of a selected ID
-  const [marketRegionName, setMarketRegionName] = useState<string>('');
-  const [error, setError] = useState<string>('');
+const initialJobState: JobState = {
+  file: null,
+  status: 'IDLE',
+  progress: 0,
+  message: '',
+  jobId: null,
+};
 
-  const [jobState, setJobState] = useState<JobState>({
-    file: null,
-    status: 'IDLE',
-    progress: 0,
-    message: '',
-    jobId: null,
-  });
-  const [marketRegion, setMarketRegion] = useState('');
+export function LeadsUpload() {
+  const [jobState, setJobState] = useState<JobState>(initialJobState);
+  const [marketRegion, setMarketRegion] = useState<string>('');
+  const [uploadProgress, setUploadProgress] = useState(0); // For client-side upload tracking
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  // New state to track upload-specific progress
-  const [uploadProgress, setUploadProgress] = useState(0);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setJobState({ ...jobState, file, status: 'READY' });
-      setUploadProgress(0);
-    }
-  };
-
   useEffect(() => {
+    // Cleanup subscription on component unmount
     return () => {
       if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+        createClient().removeChannel(channelRef.current);
       }
     };
   }, []);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
-      setFile(acceptedFiles[0]);
-      setError('');
+      setJobState({ ...initialJobState, file: acceptedFiles[0], status: 'READY' });
+      setUploadProgress(0);
     }
   }, []);
 
@@ -68,20 +58,18 @@ export function LeadsUpload() {
   });
 
   const handleReset = () => {
-    setFile(null);
-    // FIX: Reset the market region name
-    setMarketRegionName('');
-    setError('');
-    setJobState({ file: null, status: 'IDLE', progress: 0, message: '', jobId: null });
+    setJobState(initialJobState);
+    setMarketRegion('');
+    setUploadProgress(0);
     if (channelRef.current) {
-      supabase.removeChannel(channelRef.current).then(status => console.log(`Unsubscribed from channel: ${status}`));
+      createClient().removeChannel(channelRef.current);
       channelRef.current = null;
     }
   };
 
   const handleUpload = async () => {
-    if (!jobState.file || !marketRegionName) {
-      setJobState(prevState => ({ ...prevState, message: 'Please select a file and enter a market region.' }));
+    if (!jobState.file || !marketRegion) {
+      setJobState(prevState => ({ ...prevState, message: 'Please select a file and enter a market region.', status: 'FAILED' }));
       return;
     }
 
@@ -97,14 +85,14 @@ export function LeadsUpload() {
       });
 
       if (!startResponse.ok) {
-        const errorData = await startResponse.json();
-        throw new Error(errorData.error || 'Could not start upload job.');
+        const { error } = await startResponse.json();
+        throw new Error(error || 'Could not start upload job.');
       }
 
       const { jobId } = await startResponse.json();
       setJobState(prevState => ({ ...prevState, jobId }));
 
-      // 2. Subscribe to real-time updates for this job *before* starting the upload
+      // 2. Subscribe to real-time updates for this job
       channelRef.current = supabase.channel(`upload_job:${jobId}`);
       channelRef.current
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'upload_jobs', filter: `job_id=eq.${jobId}` },
@@ -114,7 +102,7 @@ export function LeadsUpload() {
               ...prevState,
               status: status ?? prevState.status,
               progress: progress ?? prevState.progress,
-              message: message || prevState.message
+              message: message || prevState.message,
             }));
             if (status === 'COMPLETE' || status === 'FAILED') {
               if (channelRef.current) {
@@ -126,7 +114,7 @@ export function LeadsUpload() {
         )
         .subscribe();
 
-      // 3. Upload the file to Supabase Storage with chunking
+      // 3. Upload the file to Supabase Storage with chunking and progress tracking
       setJobState(prevState => ({ ...prevState, message: 'Uploading file to secure storage...' }));
       const filePath = `${jobId}/${jobState.file.name}`;
       const { error: uploadError } = await supabase.storage
@@ -135,14 +123,12 @@ export function LeadsUpload() {
           cacheControl: '3600',
           upsert: true,
           contentType: jobState.file.type,
-          onProgress: (progress) => {
-            setUploadProgress(progress);
-          }
         });
 
       if (uploadError) {
         throw new Error(`Storage upload failed: ${uploadError.message}`);
       }
+      setUploadProgress(100); // Mark upload as complete since onProgress is not available in this version
 
       setJobState(prevState => ({ ...prevState, status: 'PROCESSING', message: 'File uploaded. Starting processing...' }));
 
@@ -150,15 +136,13 @@ export function LeadsUpload() {
       const processResponse = await fetch('/api/leads/upload/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId, marketRegion: marketRegionName }),
+        body: JSON.stringify({ jobId, marketRegion }),
       });
 
       if (!processResponse.ok) {
-        const errorData = await processResponse.json();
-        throw new Error(errorData.error || 'Failed to start processing.');
+        const { error } = await processResponse.json();
+        throw new Error(error || 'Failed to start processing.');
       }
-
-      // Backend is now processing. Real-time channel will handle UI updates.
 
     } catch (error: any) {
       console.error('Upload process error:', error);
@@ -170,10 +154,11 @@ export function LeadsUpload() {
     }
   };
 
-  const isUploading = jobState.status === 'UPLOADING' || (jobState.status === 'PROCESSING' && !!jobState.jobId);
+  const isUploadingOrProcessing = jobState.status === 'UPLOADING' || jobState.status === 'PROCESSING';
   const isFinished = jobState.status === 'COMPLETE' || jobState.status === 'FAILED';
+  const displayProgress = jobState.status === 'UPLOADING' ? uploadProgress : jobState.progress;
 
-  if (isUploading || isFinished) {
+  if (isUploadingOrProcessing || isFinished) {
     const progressColor = jobState.status === 'COMPLETE' ? 'success' : jobState.status === 'FAILED' ? 'danger' : 'primary';
     return (
       <div className="flex flex-col items-center justify-center h-full p-4 space-y-4">
@@ -184,40 +169,38 @@ export function LeadsUpload() {
         <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
           <div
             className="bg-blue-600 h-2.5 rounded-full transition-all duration-500"
-            style={{ width: `${jobState.status === 'UPLOADING' ? uploadProgress : jobState.progress}%` }}
+            style={{ width: `${displayProgress}%` }}
           ></div>
         </div>
         {isFinished && (
           <Button size="sm" variant="flat" className="mt-4" onPress={handleReset}>Upload Another File</Button>
         )}
       </div>
-    )
+    );
   }
 
   return (
     <div className="flex flex-col h-full p-2 space-y-4">
-      {/* FIX: Replaced Select with FloatingLabelInput */}
       <FloatingLabelInput
         label="Market Region"
         placeholder="e.g., Dallas / Fort Worth"
-        value={marketRegionName}
-        onChange={(e) => setMarketRegionName(e.target.value)}
+        value={marketRegion}
+        onChange={(e) => setMarketRegion(e.target.value)}
         required
       />
       <div {...getRootProps()} className={`flex-grow flex items-center justify-center p-4 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors ${isDragActive ? 'border-primary bg-primary-50' : 'border-default-200 hover:border-default-400'}`}>
         <input {...getInputProps()} />
         <div className="text-center text-default-500">
           <Icon icon="lucide:upload-cloud" className="w-10 h-10 mx-auto mb-2" />
-          {file ? (
-            <span>{file.name}</span>
+          {jobState.file ? (
+            <span>{jobState.file.name}</span>
           ) : (
             <span>Drag & drop or click to select CSV</span>
           )}
         </div>
       </div>
-      {error && <p className="text-danger text-xs text-center">{error}</p>}
-      {/* FIX: Update disabled logic */}
-      <Button color="primary" onPress={handleUpload} disabled={!file || !marketRegionName}>
+      {jobState.message && jobState.status === 'FAILED' && <p className="text-danger text-xs text-center">{jobState.message}</p>}
+      <Button color="primary" onPress={handleUpload} disabled={!jobState.file || !marketRegion || jobState.status === 'UPLOADING' || jobState.status === 'PROCESSING'}>
         Upload and Process
       </Button>
     </div>
