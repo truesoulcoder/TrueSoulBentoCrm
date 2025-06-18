@@ -1,7 +1,7 @@
 // src/components/maps/StreetViewMap.tsx
 'use client';
 
-import { Map, AdvancedMarker, useApiIsLoaded } from '@vis.gl/react-google-maps';
+import { Map, AdvancedMarker, Marker, useApiIsLoaded } from '@vis.gl/react-google-maps';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@heroui/react';
@@ -121,6 +121,8 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ apiKey, address })
     return <StatusDisplay message="Address not provided." icon={<AlertTriangle className="w-8 h-8 text-info" />} />;
   }
 
+  const mapId = process.env.NEXT_PUBLIC_MAPS_ID;
+
   return (
     <div style={containerStyle}>
       {hasStreetView && (
@@ -141,14 +143,17 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ apiKey, address })
       ) : (
         <div style={{ width: '100%', height: '100%', borderRadius: '0.5rem', overflow: 'hidden' }}>
           <Map
-            // FIX: Pass required props and use standardized env var name
             defaultCenter={position}
             defaultZoom={14}
-            mapId={process.env.NEXT_PUBLIC_MAPS_ID}
-            disableDefaultUI={true}
-            gestureHandling={"greedy"}
+            {...(mapId ? { mapId } : {})}
+            disableDefaultUI
+            gestureHandling="greedy"
           >
-            <AdvancedMarker position={position} />
+            {mapId ? (
+              <AdvancedMarker position={position} />
+            ) : (
+              <Marker position={position} />
+            )}
           </Map>
         </div>
       )}
