@@ -31,6 +31,7 @@ interface DraggableDashboardProps {
   currentCampaign: string;
   isEditMode: boolean;
   userRole: string;
+  userId: string; // <-- Accept userId prop
 }
 
 type LayoutItem = { i: string; x: number; y: number; w: number; h: number };
@@ -42,6 +43,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
   currentCampaign,
   isEditMode,
   userRole,
+  userId, // <-- Destructure userId from props
 }) => {
   const allDashboardItems: DashboardItem[] = [
     {
@@ -50,7 +52,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       subtitle: "Manage your campaign leads",
       component: <LeadsTable />,
       defaultSize: { w: 3, h: 6 }, 
-      minSize: { w: 2, h: 4 }, // Adjusted for flexibility
+      minSize: { w: 2, h: 4 },
     },
     {
       i: "status",
@@ -66,7 +68,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       subtitle: "Last 7 days",
       component: <CampaignChart />,
       defaultSize: { w: 2, h: 2 },
-      minSize: { w: 2, h: 2 }, // Chart looks best at this minimum
+      minSize: { w: 2, h: 2 },
     },
     {
       i: "engine-manager",
@@ -90,7 +92,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       subtitle: "Upload new leads via CSV",
       component: <LeadsUpload />,
       defaultSize: { w: 1, h: 2 },
-      minSize: { w: 1, h: 2 }, // Adjusted for flexibility
+      minSize: { w: 1, h: 2 },
     },
     {
       i: "template",
@@ -138,7 +140,6 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
     }
   };
 
-  // Redesigned default layouts for a cleaner look
   const defaultLayouts: Layouts = {
     lg: [
       { i: "leads", x: 0, y: 0, w: 3, h: 6 },

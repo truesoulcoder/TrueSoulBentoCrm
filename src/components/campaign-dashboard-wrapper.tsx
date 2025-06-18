@@ -10,25 +10,22 @@ import { DraggableDashboard } from './draggable-dashboard';
 import { signOut } from '@/actions/auth';
 import type { Database } from '@/types/supabase';
 
-// FIX: Define and export the LeadWithProperties type.
+// This type definition is used by other components that may still be in your build graph.
 export type LeadWithProperties = Database['public']['Tables']['campaign_leads']['Row'] & {
   properties?: Database['public']['Tables']['properties']['Row'] | null;
 };
 
-interface CampaignDashboardWrapperProps {
-  userRole: string;
-  userId: string; // Add userId prop
-}
-
 export function CampaignDashboardWrapper({
   userRole,
-  userId, // Destructure userId
-}: CampaignDashboardWrapperProps) {
+  userId, // <-- Accept userId prop
+}: {
+  userRole: string;
+  userId: string; // <-- Define userId prop type
+}) {
   const [isEditMode, setIsEditMode] = useState(false);
   const { theme, setTheme } = useTheme();
   const router = useRouter();
 
-  // Placeholder state for the dashboard props.
   const [isRunning, setIsRunning] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [currentCampaign, setCurrentCampaign] = useState("Q2 Investor Outreach");
@@ -51,8 +48,8 @@ export function CampaignDashboardWrapper({
               color="primary"
               onPress={() => setIsEditMode(!isEditMode)}
               startContent={<Icon icon="lucide:layout" className="hidden md:block" />}
-              isIconOnly={false} // Ensure text is shown on larger screens
-              className="md:not-is-icon-only px-4 py-2" // Add padding to prevent truncation
+              isIconOnly={true}
+              className="md:not-is-icon-only"
             >
              <span className="hidden md:block">{isEditMode ? 'Save Layout' : 'Edit Layout'}</span>
             </Button>
@@ -82,7 +79,7 @@ export function CampaignDashboardWrapper({
           currentCampaign={currentCampaign}
           isEditMode={isEditMode}
           userRole={userRole}
-          userId={userId} // Pass userId to DraggableDashboard
+          userId={userId} 
         />
       </main>
     </div>
