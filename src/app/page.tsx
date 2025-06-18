@@ -12,8 +12,9 @@ export type DashboardPageData = {
   engineState: Database['public']['Tables']['engine_state']['Row'] | null;
 };
 
-// This server-side function fetches all data in parallel for performance.
-async function getDashboardData(supabase: ReturnType<typeof createClient>): Promise<DashboardPageData> {
+// FIX: Correct the type annotation for the supabase client parameter.
+// It should be the awaited/resolved client, not the promise.
+async function getDashboardData(supabase: Awaited<ReturnType<typeof createClient>>): Promise<DashboardPageData> {
   // We use the authenticated user's supabase client here because RLS policies
   // on the underlying tables will correctly filter the data.
   const leadsPromise = supabase.rpc('search_properties_with_contacts', { search_term: '' });
@@ -31,7 +32,6 @@ async function getDashboardData(supabase: ReturnType<typeof createClient>): Prom
   if (leadsError) console.error("Error fetching leads:", leadsError.message);
   if (campaignsError) console.error("Error fetching campaigns:", campaignsError.message);
   if (marketRegionsError) console.error("Error fetching market regions:", marketRegionsError.message);
-  // A 'PGRST116' error for engineState is not critical if the row doesn't exist yet, so we don't log it as a hard error.
   if (engineStateError && engineStateError.code !== 'PGRST116') {
       console.error("Error fetching engine state:", engineStateError.message);
   }
@@ -53,14 +53,18 @@ export default async function Home() {
     redirect('/login');
   }
 
-  const user = session.user;
+  // FIX: Switched from getSession() to getUser() to align with best practices and remove build warnings.
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect('/login');
+  }
+
   const userRole = user.user_metadata?.user_role || 'guest';
   const userId = user.id;
   
-  // Fetch all initial data on the server.
   const initialData = await getDashboardData(supabase);
   
-  // Pass both the user's info and the initial data to the client-side wrapper.
   return (
     <CampaignDashboardWrapper
       userRole={userRole}
