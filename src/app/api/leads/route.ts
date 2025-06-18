@@ -92,9 +92,10 @@ export async function GET(request: NextRequest) {
     let processedData = rpcData;
 
     // If a specific region is requested (and not 'all'), filter the results from the RPC call
-    // The search_properties_with_contacts function returns market_region, so we can filter on it.
+    // The search_properties_with_contacts function returns market_region_id from the properties table (p.*),
+    // so we filter on lead.market_region_id.
     if (region && region !== 'all' && Array.isArray(rpcData)) {
-      processedData = rpcData.filter((lead: any) => lead.market_region === region);
+      processedData = rpcData.filter((lead: any) => lead.market_region_id === region);
     }
     
     // For non-superadmins, the RLS policy on the 'properties' table should already handle filtering.
