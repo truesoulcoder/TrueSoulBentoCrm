@@ -89,26 +89,19 @@ export async function GET(request: NextRequest) {
       throw new Error(`Failed to fetch leads via RPC: ${rpcError.message}`);
     }
 
-    let processedData = rpcData;
+    let leads = rpcData || [];
 
-    // If a specific region is requested (and not 'all'), filter the results from the RPC call
-    // The search_properties_with_contacts function returns market_region_id from the properties table (p.*),
-    // so we filter on lead.market_region_id.
-    if (region && region !== 'all' && Array.isArray(rpcData)) {
-      processedData = rpcData.filter((lead: any) => lead.market_region_id === region);
-    }
-    
-    // For non-superadmins, the RLS policy on the 'properties' table should already handle filtering.
-    // However, if the RPC function bypasses RLS (which it generally shouldn't if security definer
-    // is set up correctly with `auth.uid()`), this additional filter ensures data integrity.
-    // Given the `search_properties_with_contacts` function does `p.*` and `pc.*` where `p` is properties,
-    // and `properties` table has `auth.uid() = user_id` RLS for non-superadmins, this should be implicitly filtered.
-    // But to be explicit and safe:
-    if (!isSuperAdmin && effectiveUserId && Array.isArray(processedData)) {
-      processedData = processedData.filter((lead: any) => lead.user_id === effectiveUserId);
+    // If a specific region is requested (and not 'all'), filter the results.
+    if (region && region !== 'all') {
+      leads = leads.filter((lead: any) => lead.market_region_id === region);
     }
 
-    const data = processedData;
+    // For non-superadmins, RLS should handle filtering. This is an extra safeguard.
+    if (!isSuperAdmin && effectiveUserId) {
+      leads = leads.filter((lead: any) => lead.user_id === effectiveUserId);
+    }
+
+    const data = leads;
 
     // Resilient Caching: Tries to write to cache but doesn't fail the request if it can't.
     try {
