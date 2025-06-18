@@ -37,15 +37,6 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 // Polling interval in ms (default: check every 30 seconds)
 const POLLING_INTERVAL = parseInt(process.env.SCRAPER_POLLING_INTERVAL || '30000', 10);
 
-// Output directory for scraped data
-const DEFAULT_OUTPUT_DIR = path.join(process.cwd(), 'data', 'zillow-properties');
-
-// Ensure output directory exists
-if (!fs.existsSync(DEFAULT_OUTPUT_DIR)) {
-  fs.mkdirSync(DEFAULT_OUTPUT_DIR, { recursive: true });
-  console.log(`Created output directory: ${DEFAULT_OUTPUT_DIR}`);
-}
-
 /**
  * Helper function to send logs to the Next.js API route
  */
@@ -59,7 +50,7 @@ async function sendWorkerLog(log: {
 }) {
   try {
     const { event_type, message, details, level, jobId, userId } = log;
-    const logDetails = { ...details, worker: true, pid: process.pid };
+    const logDetails = { ...details, worker: 'local-zillow-scraper-worker.ts', pid: process.pid };
 
     const response = await fetch(`${siteUrl}/api/worker-logs`, {
       method: 'POST',
@@ -71,7 +62,7 @@ async function sendWorkerLog(log: {
         message,
         details: logDetails,
         level,
-        campaign_id: undefined, // Not directly campaign related here
+        campaign_id: undefined,
         user_id: userId,
         job_id: jobId,
       }),
@@ -106,16 +97,7 @@ async function processJobs() {
       .limit(1)
       .single();
     
-    if (error) {
-      if (error.code === 'PGRST116') { // No rows returned
-        await sendWorkerLog({
-          event_type: 'ZILLOW_WORKER_NO_JOBS',
-          message: 'No pending jobs found.',
-          level: 'DEBUG'
-        });
-        return;
-      }
-      
+    if (error && error.code !== 'PGRST116') { // Ignore 'No rows found' error
       await sendWorkerLog({
         event_type: 'ZILLOW_WORKER_DB_ERROR',
         message: 'Error fetching jobs from database.',
@@ -126,11 +108,7 @@ async function processJobs() {
     }
     
     if (!job) {
-      await sendWorkerLog({
-        event_type: 'ZILLOW_WORKER_NO_JOBS',
-        message: 'No pending jobs found.',
-        level: 'DEBUG'
-      });
+      // This is the normal state when there are no jobs, no need to log every time.
       return;
     }
     
@@ -152,27 +130,14 @@ async function processJobs() {
       })
       .eq('id', job.id);
     
-    // Create a unique output directory for this job
-    const timestamp = new Date().toISOString().replace(/[:T.]/g, '-').replace('Z', '');
-    const jobOutputDir = path.join(DEFAULT_OUTPUT_DIR, `job-${timestamp}`);
-    
-    if (!fs.existsSync(jobOutputDir)) {
-      fs.mkdirSync(jobOutputDir, { recursive: true });
-    }
-    
-    // Update job with output directory
-    await supabase
-      .from('zillow_scraper_jobs')
-      .update({ output_directory: jobOutputDir })
-      .eq('id', job.id);
-    
     // Create a temporary .env file for the scraper
     const envPath = path.join(process.cwd(), '.env.scraper');
     await writeFile(
       envPath,
       `SCRAPER_START_URL=${job.zillow_url}\n` +
       `SCRAPER_USER_AGENT=${job.user_agent || ''}\n` +
-      `SCRAPER_OUTPUT_DIR=${jobOutputDir}\n` +
+      `NEXT_PUBLIC_SITE_URL=${siteUrl}\n` + // Pass this to the child process
+      `JOB_ID=${job.id}\n` + // FIX: Pass the job ID to the scraper script
       `EXPORT_COOKIES=false\n`
     );
     
@@ -183,11 +148,13 @@ async function processJobs() {
       await sendWorkerLog({
         event_type: 'ZILLOW_WORKER_SCRAPER_RUN',
         message: `Running scraper script for job ${job.id}.`,
-        details: { jobId: job.id, scriptPath, outputDir: jobOutputDir },
+        details: { jobId: job.id, scriptPath },
         level: 'INFO',
         jobId: job.id,
         userId: job.created_by
       });
+
+      // Execute the scraper script using the temporary env file
       const { stdout, stderr } = await execPromise(`npx cross-env-file .env.scraper ts-node ${scriptPath}`);
       
       if (stderr) {
@@ -210,28 +177,19 @@ async function processJobs() {
         userId: job.created_by
       });
       
-      // Try to determine how many properties were scraped
-      let propertiesScraped = 0;
-      
-      // Look for JSON files in the output directory to count properties
-      const files = fs.readdirSync(jobOutputDir);
-      const jsonFiles = files.filter(file => file.endsWith('.json'));
-      propertiesScraped = jsonFiles.length;
-      
       // Update job to completed status
       await supabase
         .from('zillow_scraper_jobs')
         .update({
           status: 'completed',
           completed_at: new Date().toISOString(),
-          properties_scraped: propertiesScraped
         })
         .eq('id', job.id);
       
       await sendWorkerLog({
         event_type: 'ZILLOW_WORKER_JOB_COMPLETED',
-        message: `Job ${job.id} completed successfully. Scraped ${propertiesScraped} properties.`,
-        details: { jobId: job.id, propertiesScraped },
+        message: `Job ${job.id} completed successfully.`,
+        details: { jobId: job.id },
         level: 'INFO',
         jobId: job.id,
         userId: job.created_by
@@ -257,14 +215,6 @@ async function processJobs() {
         })
         .eq('id', job.id);
         
-      await sendWorkerLog({
-        event_type: 'ZILLOW_WORKER_JOB_FAILED',
-        message: `Job ${job.id} failed.`,
-        details: { jobId: job.id, error: error.message },
-        level: 'ERROR',
-        jobId: job.id,
-        userId: job.created_by
-      });
     } finally {
       // Clean up the temporary env file
       await unlink(envPath).catch(err => {
@@ -294,7 +244,7 @@ async function startWorker() {
   await sendWorkerLog({
     event_type: 'ZILLOW_WORKER_START',
     message: 'Starting Zillow Scraper Worker...',
-    details: { pollingInterval: POLLING_INTERVAL, outputDir: DEFAULT_OUTPUT_DIR },
+    details: { pollingInterval: POLLING_INTERVAL },
     level: 'INFO'
   });
   
@@ -304,139 +254,6 @@ async function startWorker() {
   // Set up polling
   setInterval(processJobs, POLLING_INTERVAL);
 }
-
-// Enhance the worker script to add explicit console logging for screenshot operations
-async function enhanceScraperScript(): Promise<void> {
-  // Path to the original scraper script
-  const originalScraperPath = path.join(process.cwd(), 'scripts', 'zillowPropertyScraper.ts');
-  
-  // Check if the file exists
-  try {
-    await fs.promises.access(originalScraperPath);
-    
-    // Read the original file
-    const originalCode = await fs.promises.readFile(originalScraperPath, 'utf-8');
-    
-    // Only update if it doesn't already have our enhanced logging
-    if (!originalCode.includes('Screenshot captured successfully')) {
-      await sendWorkerLog({
-        event_type: 'ZILLOW_WORKER_SCRIPT_ENHANCEMENT',
-        message: 'Enhancing scraper script with screenshot logging...',
-        level: 'INFO'
-      });
-      
-      // Find the screenshot code and enhance it
-      // This is a simple search and replace that looks for common screenshot patterns
-      // You may need to adjust based on your actual implementation
-      let enhancedCode = originalCode.replace(
-        /await page\.screenshot\(\s*{\s*([^}]*)}\s*\);/g,
-        `try {
-          // Log attempt to capture screenshot
-          const eventDetails = { jobId: job?.id, userId: job?.created_by, action: 'attempt_screenshot' };
-          fetch('${siteUrl}/api/worker-logs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ event_type: 'ZILLOW_SCRAPER_SCREENSHOT_ATTEMPT', message: 'Attempting to capture screenshot...', details: eventDetails, level: 'DEBUG' }),
-          }).catch(err => console.warn('Failed to log screenshot attempt to API:', err.message));
-          
-          await page.screenshot({$1});
-          
-          // Log screenshot success
-          fetch('${siteUrl}/api/worker-logs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ event_type: 'ZILLOW_SCRAPER_SCREENSHOT_SUCCESS', message: 'Screenshot captured successfully', details: eventDetails, level: 'DEBUG' }),
-          }).catch(err => console.warn('Failed to log screenshot success to API:', err.message));
-        } catch (screenshotError: any) {
-          // Log screenshot failure
-          const eventDetails = { jobId: job?.id, userId: job?.created_by, action: 'screenshot_failed', errorMessage: screenshotError.message };
-          fetch('${siteUrl}/api/worker-logs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ event_type: 'ZILLOW_SCRAPER_SCREENSHOT_FAILED', message: 'Failed to capture screenshot', details: eventDetails, level: 'ERROR' }),
-          }).catch(err => console.warn('Failed to log screenshot error to API:', err.message));
-        }`
-      );
-      
-      // If no replacements were made with the above pattern, try a simpler one
-      if (enhancedCode === originalCode) {
-        enhancedCode = originalCode.replace(
-          /await page\.screenshot\(/g,
-          `try {
-            const eventDetails = { jobId: job?.id, userId: job?.created_by, action: 'attempt_screenshot' };
-            fetch('${siteUrl}/api/worker-logs', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ event_type: 'ZILLOW_SCRAPER_SCREENSHOT_ATTEMPT', message: 'Attempting to capture screenshot...', details: eventDetails, level: 'DEBUG' }),
-            }).catch(err => console.warn('Failed to log screenshot attempt to API:', err.message));
-            
-            await page.screenshot(`
-        ).replace(
-          /\);(\s*\/\/[\s\S]*?$|\s*$)/gm,
-          `);
-            fetch('${siteUrl}/api/worker-logs', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ event_type: 'ZILLOW_SCRAPER_SCREENSHOT_SUCCESS', message: 'Screenshot captured successfully', details: { jobId: job?.id, userId: job?.created_by, action: 'screenshot_success' }, level: 'DEBUG' }),
-            }).catch(err => console.warn('Failed to log screenshot success to API:', err.message));
-          } catch (screenshotError: any) {
-            fetch('${siteUrl}/api/worker-logs', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ event_type: 'ZILLOW_SCRAPER_SCREENSHOT_FAILED', message: 'Failed to capture screenshot', details: { jobId: job?.id, userId: job?.created_by, action: 'screenshot_failed', errorMessage: screenshotError.message }, level: 'ERROR' }),
-            }).catch(err => console.warn('Failed to log screenshot error to API:', err.message));
-          }$1`
-        );
-      }
-      
-      // Create a backup of the original file
-      const backupPath = `${originalScraperPath}.backup`;
-      await fs.promises.writeFile(backupPath, originalCode);
-      await sendWorkerLog({
-        event_type: 'ZILLOW_WORKER_SCRIPT_BACKUP',
-        message: `Created backup of original scraper script at ${backupPath}.`,
-        level: 'INFO',
-        details: { backupPath }
-      });
-      
-      // Write the enhanced code back
-      await fs.promises.writeFile(originalScraperPath, enhancedCode);
-      await sendWorkerLog({
-        event_type: 'ZILLOW_WORKER_SCRIPT_ENHANCED',
-        message: 'Updated scraper script with enhanced screenshot logging.',
-        level: 'INFO',
-        details: { scriptPath: originalScraperPath }
-      });
-    } else {
-      await sendWorkerLog({
-        event_type: 'ZILLOW_WORKER_SCRIPT_ALREADY_ENHANCED',
-        message: 'Scraper script already has enhanced screenshot logging.',
-        level: 'DEBUG'
-      });
-    }
-    
-  } catch (err) {
-    const error = err as Error;
-    await sendWorkerLog({
-      event_type: 'ZILLOW_WORKER_SCRIPT_ENHANCEMENT_FAILED',
-      message: `Could not enhance scraper script: ${error.message}`,
-      level: 'WARN',
-      details: { errorMessage: error.message, stack: error.stack }
-    });
-    console.warn('You will need to manually add screenshot logging to your Zillow scraper script');
-  }
-}
-
-// Call the enhancement function when the worker starts
-enhanceScraperScript().catch(err => {
-  console.error('Failed to enhance scraper script:', err);
-  sendWorkerLog({
-    event_type: 'ZILLOW_WORKER_ENHANCEMENT_CRITICAL_FAILURE',
-    message: `Critical failure during scraper script enhancement: ${err instanceof Error ? err.message : String(err)}`,
-    level: 'ERROR',
-    details: { error: err instanceof Error ? err.message : String(err) }
-  });
-});
 
 // Start the worker
 startWorker().catch(err => {

@@ -10,7 +10,6 @@ import { DraggableDashboard } from './draggable-dashboard';
 import { signOut } from '@/actions/auth';
 import type { DashboardPageData } from '@/app/page';
 
-// This wrapper component now accepts the server-fetched initialData
 export function CampaignDashboardWrapper({
   userRole,
   userId,
@@ -24,8 +23,6 @@ export function CampaignDashboardWrapper({
   const { theme, setTheme } = useTheme();
   const router = useRouter();
 
-  // Note: These state values are now for demonstration or future client-side updates.
-  // The initial state is driven by the data passed in `initialData`.
   const [isRunning, setIsRunning] = useState(initialData.engineState?.status === 'running');
   const [isPaused, setIsPaused] = useState(initialData.engineState?.status === 'paused');
   const [currentCampaign, setCurrentCampaign] = useState("Q2 Investor Outreach");
@@ -47,10 +44,11 @@ export function CampaignDashboardWrapper({
               variant={isEditMode ? "solid" : "flat"}
               color="primary"
               onPress={() => setIsEditMode(!isEditMode)}
-              startContent={<Icon icon="lucide:layout" className="hidden md:block" />}
-              isIconOnly={true}
-              className="md:not-is-icon-only"
+              // FIX: The icon is now always present
+              startContent={<Icon icon="lucide:layout" className="w-5 h-5" />}
+              // FIX: Removed the isIconOnly prop to allow the button to expand
             >
+             {/* FIX: This span correctly hides text on small screens, making the button effectively icon-only */}
              <span className="hidden md:block">{isEditMode ? 'Save Layout' : 'Edit Layout'}</span>
             </Button>
           )}
@@ -80,7 +78,6 @@ export function CampaignDashboardWrapper({
           isEditMode={isEditMode}
           userRole={userRole}
           userId={userId}
-          // Pass the initial data down to the dashboard grid
           initialData={initialData}
         />
       </main>

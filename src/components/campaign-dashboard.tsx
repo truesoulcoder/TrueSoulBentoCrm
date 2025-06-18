@@ -16,7 +16,10 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabase/client'
+
+type MarketRegion = { id: string; name: string };
 import { LeadsTable } from './leads-table'
 import { CampaignSettings } from './campaign-settings'
 import { TemplatePreview } from './template-preview'
@@ -33,7 +36,21 @@ export function CampaignDashboard({ leads, userRole }: { leads: LeadData[], user
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+  const [marketRegions, setMarketRegions] = useState<MarketRegion[]>([])
+
+  useEffect(() => {
+    async function fetchMarketRegions() {
+      const { data, error } = await supabase
+        .from('active_market_regions')
+        .select('id, name')
+        .not('name', 'is', null)
+      if (!error && data) {
+        setMarketRegions(data as MarketRegion[])
+      }
+    }
+    fetchMarketRegions()
+  }, [])
+
   // Pagination state
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -151,9 +168,10 @@ export function CampaignDashboard({ leads, userRole }: { leads: LeadData[], user
                   <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                     <div className="lg:col-span-2">
                       <LeadsTable
-                        leads={leads.filter(
+                        initialLeads={leads.filter(
                           (l: LeadData) => l.campaign_id === selectedCampaign.id
                         )}
+                        initialMarketRegions={marketRegions}
                       />
                     </div>
                     <div>
@@ -176,7 +194,7 @@ export function CampaignDashboard({ leads, userRole }: { leads: LeadData[], user
             ) : (
               // Non-admin view: Just the leads table
               <div className="h-full">
-                <LeadsTable leads={leads} />
+                <LeadsTable initialLeads={leads} initialMarketRegions={marketRegions} />
               </div>
             )}
         </main>
