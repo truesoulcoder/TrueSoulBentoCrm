@@ -19,23 +19,30 @@ import {
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase/client'
 
-type MarketRegion = { id: string; name: string };
 import { LeadsTable } from './leads-table'
 import { CampaignSettings } from './campaign-settings'
 import { TemplatePreview } from './template-preview'
 import { EmailSelector } from './email-selector'
 import { CampaignConsole } from './campaign-console'
+
 import { Database } from '@/types'
+import type { DashboardPageData } from '@/app/page'
 
-// Define types based on Supabase schema
-type Campaign = Database['public']['Tables']['campaigns']['Row'];
-type LeadData = Database['public']['Views']['properties_with_contacts']['Row'];
+type Campaign = Database['public']['Tables']['campaigns']['Row']
+type LeadData = DashboardPageData['leads'][number]
+type MarketRegion = { id: string; name: string }
 
-export function CampaignDashboard({ leads, userRole }: { leads: LeadData[], userRole: string }) {
+export function CampaignDashboard({
+  leads,
+  userRole,
+}: {
+  leads: LeadData[]
+  userRole: string
+}) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [marketRegions, setMarketRegions] = useState<MarketRegion[]>([])
 
   useEffect(() => {
@@ -52,53 +59,50 @@ export function CampaignDashboard({ leads, userRole }: { leads: LeadData[], user
   }, [])
 
   // Pagination state
-  const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const limit = 15; // You can adjust the number of items per page
+  const [page, setPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const limit = 15
 
-  const isSuperAdmin = userRole === 'superadmin';
+  const isSuperAdmin = userRole === 'superadmin'
 
   async function fetchCampaigns(pageNum: number) {
     if (pageNum === 1) {
-        setCampaigns([]);
+      setCampaigns([])
     }
-    setIsLoading(true);
+    setIsLoading(true)
     try {
-        const response = await fetch(`/api/campaigns?page=${pageNum}&limit=${limit}`);
-        if (!response.ok) {
-            const errData = await response.json();
-            throw new Error(errData.error || 'Failed to fetch campaigns');
-        }
-        const { campaigns: newCampaigns, count } = await response.json();
-        
-        setCampaigns(prev => [...prev, ...newCampaigns]);
-        setTotalCount(count);
-        setPage(pageNum);
-
-        if (!selectedCampaign && pageNum === 1 && newCampaigns.length > 0) {
-            setSelectedCampaign(newCampaigns[0]);
-        }
+      const response = await fetch(`/api/campaigns?page=${pageNum}&limit=${limit}`)
+      if (!response.ok) {
+        const errData = await response.json()
+        throw new Error(errData.error || 'Failed to fetch campaigns')
+      }
+      const { campaigns: newCampaigns, count } = await response.json()
+      setCampaigns(prev => [...prev, ...newCampaigns])
+      setTotalCount(count)
+      setPage(pageNum)
+      if (!selectedCampaign && pageNum === 1 && newCampaigns.length > 0) {
+        setSelectedCampaign(newCampaigns[0])
+      }
     } catch (err: any) {
-        setError(err.message);
+      setError(err.message)
     } finally {
-        setIsLoading(false);
+      setIsLoading(false)
     }
   }
 
   useEffect(() => {
-    // Only superadmins should fetch the list of all campaigns
     if (isSuperAdmin) {
-      fetchCampaigns(1);
+      fetchCampaigns(1)
     } else {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin])
 
   const handleLoadMore = () => {
     if (campaigns.length < totalCount) {
-        fetchCampaigns(page + 1);
+      fetchCampaigns(page + 1)
     }
-  };
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -107,8 +111,8 @@ export function CampaignDashboard({ leads, userRole }: { leads: LeadData[], user
     })
   )
 
-  const campaignIsRunning = selectedCampaign?.status === 'active';
-  const campaignIsPaused = selectedCampaign?.status === 'paused';
+  const campaignIsRunning = selectedCampaign?.status === 'active'
+  const campaignIsPaused = selectedCampaign?.status === 'paused'
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
@@ -123,80 +127,76 @@ export function CampaignDashboard({ leads, userRole }: { leads: LeadData[], user
   }
 
   if (error) {
-      return <div className="flex h-screen items-center justify-center text-red-500">Error: {error}</div>
+    return (
+      <div className="flex h-screen items-center justify-center text-red-500">
+        Error: {error}
+      </div>
+    )
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={handleDragEnd}
-    >
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
         {isSuperAdmin && (
           <aside className="w-1/4 bg-white p-4 dark:bg-gray-800 flex flex-col">
             <h2 className="text-xl font-bold mb-4">Campaigns</h2>
             <div className="flex-grow overflow-y-auto pr-2">
-              <SortableContext
-                items={campaigns.map(c => String(c.id))}
-                strategy={verticalListSortingStrategy}
-              >
+              <SortableContext items={campaigns.map(c => String(c.id))} strategy={verticalListSortingStrategy}>
                 {campaigns.map(campaign => (
-                  <div 
-                    key={campaign.id} 
+                  <div
+                    key={campaign.id}
                     onClick={() => setSelectedCampaign(campaign)}
-                    className={`p-2 my-1 cursor-pointer rounded transition-colors ${selectedCampaign?.id === campaign.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                    className={`p-2 my-1 cursor-pointer rounded transition-colors ${
+                      selectedCampaign?.id === campaign.id
+                        ? 'bg-blue-600 text-white'
+                        : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}
                   >
-                      {campaign.name}
+                    {campaign.name}
                   </div>
                 ))}
               </SortableContext>
               {isLoading && <p className="text-center p-4">Loading...</p>}
               {!isLoading && campaigns.length < totalCount && (
-                  <button onClick={handleLoadMore} className="mt-4 w-full text-center py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded">
-                      Load More
-                  </button>
+                <button
+                  onClick={handleLoadMore}
+                  className="mt-4 w-full text-center py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded"
+                >
+                  Load More
+                </button>
               )}
             </div>
           </aside>
         )}
 
         <main className="flex-1 p-6 overflow-y-auto h-full">
-            {isSuperAdmin ? (
-              <>
-                {selectedCampaign ? (
-                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                    <div className="lg:col-span-2">
-                      <LeadsTable
-                        initialLeads={leads.filter(
-                          (l: LeadData) => l.campaign_id === selectedCampaign.id
-                        )}
-                        initialMarketRegions={marketRegions}
-                      />
-                    </div>
-                    <div>
-                      <CampaignSettings currentCampaign={selectedCampaign.name} />
-                      <TemplatePreview />
-                      <EmailSelector />
-                    </div>
-                    <div className="lg:col-span-3">
-                      <CampaignConsole isRunning={campaignIsRunning} isPaused={campaignIsPaused} />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex h-full items-center justify-center">
-                    <p className="text-gray-500">
-                      {isLoading ? 'Loading campaigns...' : 'Select a campaign to view details'}
-                    </p>
-                  </div>
-                )}
-              </>
-            ) : (
-              // Non-admin view: Just the leads table
-              <div className="h-full">
-                <LeadsTable initialLeads={leads} initialMarketRegions={marketRegions} />
+          {isSuperAdmin ? (
+            selectedCampaign ? (
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <div className="lg:col-span-2">
+                  <LeadsTable initialLeads={leads} initialMarketRegions={marketRegions} />
+                </div>
+                <div>
+                  <CampaignSettings currentCampaign={selectedCampaign.name} />
+                  <TemplatePreview />
+                  <EmailSelector />
+                </div>
+                <div className="lg:col-span-3">
+                  <CampaignConsole isRunning={campaignIsRunning} isPaused={campaignIsPaused} />
+                </div>
               </div>
-            )}
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <p className="text-gray-500">
+                  {isLoading ? 'Loading campaigns...' : 'Select a campaign to view details'}
+                </p>
+              </div>
+            )
+          ) : (
+            <div className="h-full">
+              <LeadsTable initialLeads={leads} initialMarketRegions={marketRegions} />
+            </div>
+          )}
         </main>
       </div>
     </DndContext>
