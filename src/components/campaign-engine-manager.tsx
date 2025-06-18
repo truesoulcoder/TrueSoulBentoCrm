@@ -23,7 +23,12 @@ const fetcher = (url: string) => fetch(url).then(res => {
 type EngineState = Database['public']['Tables']['engine_state']['Row'];
 type Campaign = Database['public']['Tables']['campaigns']['Row'];
 
-// FIX: Update props to accept initial data from the server
+// FIX: Define a type for the actual API response shape
+type CampaignsApiResponse = {
+  campaigns: Campaign[];
+  count: number | null;
+};
+
 interface CampaignEngineManagerProps {
   initialCampaigns: Campaign[];
   initialEngineState: EngineState | null;
@@ -35,15 +40,18 @@ export const CampaignEngineManager: React.FC<CampaignEngineManagerProps> = ({ in
 
   const { isOpen, onOpen, onClose } = useDisclosure();
 
-  // FIX: Use initial data as fallbackData for SWR hooks
   const { data: engineState, mutate: mutateEngineState } = useSWR<EngineState | null>('/api/engine/control', fetcher, { 
     refreshInterval: 5000,
     fallbackData: initialEngineState,
   });
   
-  const { data: campaigns, mutate: mutateCampaigns } = useSWR<Campaign[]>('/api/campaigns', fetcher, {
-      fallbackData: initialCampaigns,
+  // FIX: Use the correct API response type and provide a matching fallbackData structure.
+  const { data: campaignsResponse, mutate: mutateCampaigns } = useSWR<CampaignsApiResponse>('/api/campaigns', fetcher, {
+      fallbackData: { campaigns: initialCampaigns, count: initialCampaigns.length },
   });
+
+  // FIX: Safely access the nested 'campaigns' array from the response object.
+  const campaigns = campaignsResponse?.campaigns;
 
   const selectedCampaign = campaigns?.find(c => c.id === selectedCampaignId);
 
@@ -53,7 +61,7 @@ export const CampaignEngineManager: React.FC<CampaignEngineManagerProps> = ({ in
     const body: { status: string; campaign_id?: string } = { status };
 
     if (status === 'running' && engineState?.status === 'paused') {
-      body.campaign_id = selectedCampaignId; // Resuming requires the campaign context
+      body.campaign_id = selectedCampaignId;
     }
 
     try {
@@ -195,7 +203,6 @@ export const CampaignEngineManager: React.FC<CampaignEngineManagerProps> = ({ in
           mutateCampaigns();
           onClose();
         }}
-        // These props are not used in the modal, passing default values
         dailyLimit={100} 
         timeWindowHours={8}
       />
