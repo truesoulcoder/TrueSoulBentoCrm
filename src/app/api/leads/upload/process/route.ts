@@ -70,7 +70,12 @@ async function processCsv(
     // 4. Process each record using the transactional RPC function
     let successfulInserts = 0;
     for (const record of parsedCsvRecords) {
-      const { error: rpcError } = await supabase.rpc('create_lead_with_contact', {
+      // Parse owner name (Contact1Name)
+      const ownerFullName = (record['Contact1Name'] || '').trim();
+      const [ownerFirstName, ...ownerLastParts] = ownerFullName.split(' ');
+      const ownerLastName = ownerLastParts.join(' ') || null;
+
+      const { data: newPropertyId, error: rpcError } = await supabase.rpc('create_lead_with_contact', {
         p_property_address: record['PropertyAddress'],
         p_property_city: record['PropertyCity'],
         p_property_state: record['PropertyState'],
@@ -78,17 +83,65 @@ async function processCsv(
         p_market_region_id: marketRegionId,
         p_user_id: userId,
         p_status: record['Status'] || 'New Lead',
-        c_first_name: record['Owner 1 First Name'],
-        c_last_name: record['Owner 1 Last Name'],
-        c_mailing_address: record['Mailing Address'],
+        c_first_name: ownerFirstName || null,
+        c_last_name: ownerLastName,
+
+        c_email: record['Contact1Email_1'] || null,
+        c_phone: record['Contact1Phone_1'] || null,
+        c_role: 'owner',
       });
 
-      if (rpcError) {
-        // Log the specific error and continue to the next record
-        console.error(`Job ${jobId}: Failed to insert record for address '${record['PropertyAddress']}'. Error: ${rpcError.message}`);
-        // Optionally, log this failure to a different table for review
-      } else {
-        successfulInserts++;
+      if (rpcError || !newPropertyId) {
+        console.error(`Job ${jobId}: Failed to insert property '${record['PropertyAddress']}'. Error: ${rpcError?.message}`);
+        continue; // Skip to next record
+      }
+
+      successfulInserts++;
+
+      // Prepare and insert additional contacts (only those with a valid email)
+      const additionalContacts: any[] = [];
+
+      if (record['Contact2Email_1']) {
+        additionalContacts.push({
+          property_id: newPropertyId,
+          user_id: userId,
+          name: record['Contact2Name'] || null,
+          email: record['Contact2Email_1'],
+          phone: record['Contact2Phone_1'] || null,
+          role: 'alternate_contact',
+
+        });
+      }
+
+      if (record['Contact3Email_1']) {
+        additionalContacts.push({
+          property_id: newPropertyId,
+          user_id: userId,
+          name: record['Contact3Name'] || null,
+          email: record['Contact3Email_1'],
+          phone: record['Contact3Phone_1'] || null,
+          role: 'alternate_contact',
+
+        });
+      }
+
+      if (record['MLS_Curr_ListAgentEmail']) {
+        additionalContacts.push({
+          property_id: newPropertyId,
+          user_id: userId,
+          name: record['MLS_Curr_ListAgentName'] || null,
+          email: record['MLS_Curr_ListAgentEmail'],
+          phone: record['MLS_Curr_ListAgentPhone'] || null,
+          role: 'mls_agent',
+          mailing_address: null,
+        });
+      }
+
+      if (additionalContacts.length) {
+        const { error: contactsError } = await supabase.from('contacts').insert(additionalContacts);
+        if (contactsError) {
+          console.error(`Job ${jobId}: Failed to insert additional contacts for property ${newPropertyId}. Error: ${contactsError.message}`);
+        }
       }
     }
 
