@@ -13,6 +13,9 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get('search') || '';
   const region = searchParams.get('region') || 'all';
   const requestedUserId = searchParams.get('userId'); // Get the userId requested from the client
+  const page = parseInt(searchParams.get('page') || '1', 10);
+  const limit = parseInt(searchParams.get('limit') || '50', 10);
+  const offset = (page - 1) * limit;
 
   const supabase = await createClient(); // Use regular client for auth check
 
@@ -33,7 +36,7 @@ export async function GET(request: NextRequest) {
   const effectiveUserId = isSuperAdmin ? null : user.id; // If not superadmin, only allow filtering by their own ID
 
   // Construct cache key based on all relevant filters and user role
-  const cacheKey = `leads:v2:region:${region}:search:${search || 'none'}:user:${effectiveUserId || 'all'}`;
+  const cacheKey = `leads:v3:region:${region}:search:${search || 'none'}:user:${effectiveUserId || 'all'}:page:${page}:limit:${limit}`;
 
   // Resilient Caching: Tries to get from cache but continues if Redis fails.
   try {
@@ -70,7 +73,9 @@ export async function GET(request: NextRequest) {
     // The `search_properties_with_contacts` function itself doesn't need a user ID
     // as it operates on the underlying `properties` table which has RLS.
     const { data: rpcData, error: rpcError } = await supabase.rpc('search_properties_with_contacts', {
-      search_term: search // Pass the search term from the request
+      search_term: search,
+      p_limit: limit,
+      p_offset: offset
     });
 
     if (rpcError) {
