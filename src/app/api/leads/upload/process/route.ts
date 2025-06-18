@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import Papa from 'papaparse';
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -14,72 +13,32 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = session.user.id;
-  let formData;
+  let body;
   try {
-    formData = await req.formData();
+    body = await req.json(); // Expect JSON body
   } catch (error) {
-    console.error('Error parsing form data:', error);
-    return NextResponse.json({ error: 'Invalid form data' }, { status: 400 });
+    console.error('Error parsing JSON body:', error);
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const file = formData.get('file') as File;
-  const marketRegion = formData.get('marketRegion') as string;
-  const jobId = formData.get('jobId') as string;
+  const { jobId, marketRegion } = body;
 
-  if (!file || !marketRegion || !jobId) {
+  if (!jobId || !marketRegion) {
     return NextResponse.json(
-      { error: 'Missing required fields: file, marketRegion, and jobId' },
+      { error: 'Missing required fields: jobId and marketRegion' },
       { status: 400 }
     );
   }
 
   try {
-    const fileContent = await file.text();
-
-    // Step 1: Parse the CSV file
-    const { data: records, errors: parseErrors } = Papa.parse(fileContent, {
-      header: true,
-      skipEmptyLines: true,
-    });
-
-    if (parseErrors.length > 0) {
-      console.error('CSV parsing errors:', parseErrors);
-      await supabase
-        .from('upload_jobs')
-        .update({ status: 'FAILED', message: 'Failed to parse CSV file.' })
-        .eq('job_id', jobId);
-      return NextResponse.json({ error: 'Failed to parse CSV file', details: parseErrors }, { status: 400 });
-    }
-
-    if (!records || records.length === 0) {
-        await supabase
-        .from('upload_jobs')
-        .update({ status: 'FAILED', message: 'CSV file is empty or contains no data.' })
-        .eq('job_id', jobId);
-      return NextResponse.json({ error: 'CSV file is empty or contains no data.' }, { status: 400 });
-    }
-
-    // Step 2: Update job status to 'processing'
+    // Step 1: Update job status to 'processing' (assuming file is already uploaded and info in DB)
+    // The import_leads_from_staging function will handle fetching file from storage, parsing, and staging.
     await supabase
       .from('upload_jobs')
-      .update({ status: 'PROCESSING', message: `Staging ${records.length} records...` })
+      .update({ status: 'PROCESSING', message: `Processing started for job ID: ${jobId}` })
       .eq('job_id', jobId);
 
-    // Step 3: Perform a bulk insert into the staging table
-    const { error: stageError } = await supabase
-      .from('staging_contacts_csv')
-      .insert(records as any[]);
-
-    if (stageError) {
-      console.error('Error inserting into staging table:', stageError);
-      await supabase
-        .from('upload_jobs')
-        .update({ status: 'FAILED', message: 'Failed to stage data.' })
-        .eq('job_id', jobId);
-      return NextResponse.json({ error: 'Failed to stage data', details: stageError.message }, { status: 500 });
-    }
-
-    // Step 4: Call the database function to process the staged data
+    // Step 2: Call the database function to process the data associated with jobId
     const { error: rpcError } = await supabase.rpc('import_leads_from_staging', {
       p_job_id: jobId,
       p_user_id: userId,
@@ -95,22 +54,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Error during final import process', details: rpcError.message }, { status: 500 });
     }
     
-    // Final success update
+    // Final success update (import_leads_from_staging should ideally set to COMPLETE)
+    // This is a fallback or can be removed if RPC handles it.
     await supabase
       .from('upload_jobs')
-      .update({ status: 'COMPLETE', progress: 100, message: 'Import completed successfully.' })
+      .update({ status: 'COMPLETE', message: 'Import process completed successfully.' })
       .eq('job_id', jobId);
 
-    return NextResponse.json({
-      message: 'File processed successfully.',
-      jobId: jobId,
-    });
+    return NextResponse.json({ message: 'Processing initiated successfully' });
+
   } catch (error: any) {
-    console.error('Unhandled error during file processing:', error);
-    await supabase
-      .from('upload_jobs')
-      .update({ status: 'FAILED', message: 'An unexpected server error occurred.' })
-      .eq('job_id', jobId);
-    return NextResponse.json({ error: 'An unexpected server error occurred.', details: error.message }, { status: 500 });
+    console.error('Error processing upload:', error);
+    // Ensure job status is updated on unexpected errors
+    if (jobId) {
+      await supabase
+        .from('upload_jobs')
+        .update({ status: 'FAILED', message: error.message || 'An unexpected error occurred during processing.' })
+        .eq('job_id', jobId);
+    }
+    return NextResponse.json({ error: error.message || 'Failed to process upload' }, { status: 500 });
   }
 }
