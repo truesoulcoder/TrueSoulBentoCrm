@@ -65,39 +65,43 @@ async function processCsv(
     const marketRegionId = regionData.id;
     await supabase.from('upload_jobs').update({ progress: 30, message: `Market region '${marketRegionName}' processed. Preparing leads...` }).eq('job_id', jobId);
 
-    // 3. Prepare Leads for Insertion
-    // IMPORTANT: Adjust the mapping logic below to match your CSV columns and 'properties' table structure.
-    const leadsToInsert = parsedCsvRecords.map(csvRecord => ({
-      // Example: map 'Property Address' CSV column to 'property_address' table column
-      property_address: csvRecord['PropertyAddress'],
-      property_city: csvRecord['PropertyCity'],
-      property_postal_code: csvRecord['PropertyPostalCode'],
-      property_state: csvRecord['PropertyState'],
-      // Add other relevant lead fields from your CSV
-      // Assuming your 'properties' table has these columns:
-      market_region_id: marketRegionId,
-      user_id: userId, // Owner of the lead
-      // Add a status for new leads, e.g., 'new'
-            status: csvRecord['Status'] || 'New Lead', 
-      // Raw CSV data can be stored for auditing/debugging if you have a jsonb column
-      // raw_csv_data: csvRecord 
-    }));
-
     await supabase.from('upload_jobs').update({ progress: 40, message: 'Leads prepared. Inserting into database...' }).eq('job_id', jobId);
 
-    // 4. Batch Insert Leads into 'properties' table
-    // IMPORTANT: Replace 'properties' with your actual leads table name if different.
-    const { error: insertLeadsError } = await supabase.from('properties').insert(leadsToInsert);
-    if (insertLeadsError) {
-      throw new Error(`Failed to insert leads: ${insertLeadsError.message}`);
+    // 4. Process each record using the transactional RPC function
+    let successfulInserts = 0;
+    for (const record of parsedCsvRecords) {
+      const { error: rpcError } = await supabase.rpc('create_lead_with_contact', {
+        p_property_address: record['PropertyAddress'],
+        p_property_city: record['PropertyCity'],
+        p_property_state: record['PropertyState'],
+        p_property_postal_code: record['PropertyPostalCode'],
+        p_market_region_id: marketRegionId,
+        p_user_id: userId,
+        p_status: record['Status'] || 'New Lead',
+        c_first_name: record['Owner 1 First Name'],
+        c_last_name: record['Owner 1 Last Name'],
+        c_mailing_address: record['Mailing Address'],
+      });
+
+      if (rpcError) {
+        // Log the specific error and continue to the next record
+        console.error(`Job ${jobId}: Failed to insert record for address '${record['PropertyAddress']}'. Error: ${rpcError.message}`);
+        // Optionally, log this failure to a different table for review
+      } else {
+        successfulInserts++;
+      }
     }
 
-    await supabase.from('upload_jobs').update({ progress: 70, message: `${leadsToInsert.length} leads inserted. Updating market region stats...` }).eq('job_id', jobId);
+    if (successfulInserts === 0 && parsedCsvRecords.length > 0) {
+        throw new Error('All lead insertions failed. Check logs for details.');
+    }
+
+    await supabase.from('upload_jobs').update({ progress: 70, message: `${successfulInserts} of ${parsedCsvRecords.length} leads inserted. Updating market region stats...` }).eq('job_id', jobId);
 
     // 5. Atomically update Lead Count in market_regions table
     const { error: updateCountError } = await supabase.rpc('increment_lead_count', {
       region_id: marketRegionId,
-      increment_value: leadsToInsert.length,
+      increment_value: successfulInserts,
     });
 
     if (updateCountError) {
