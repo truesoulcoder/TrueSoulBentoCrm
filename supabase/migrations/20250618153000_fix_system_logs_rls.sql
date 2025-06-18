@@ -1,4 +1,4 @@
--- supabase/migrations/20250618153000_fix_system_logs_rls.sql
+-- supabase/migrations/20250618160000_fix_system_logs_rls.sql
 
 -- First, ensure RLS is enabled on the table.
 ALTER TABLE public.system_event_logs ENABLE ROW LEVEL SECURITY;
@@ -16,8 +16,7 @@ TO service_role
 USING (true)
 WITH CHECK (true);
 
--- It can also be beneficial to allow authenticated users to read logs,
--- which is necessary for the Campaign Console to fetch and display them.
+-- This policy allows any logged-in user to read logs for the UI console.
 DROP POLICY IF EXISTS "Allow authenticated users to read logs" ON public.system_event_logs;
 CREATE POLICY "Allow authenticated users to read logs"
 ON public.system_event_logs
