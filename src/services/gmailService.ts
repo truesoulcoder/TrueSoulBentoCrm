@@ -1,7 +1,7 @@
 // src/services/gmailService.ts
 import { google } from 'googleapis';
 import type { gmail_v1 } from 'googleapis';
-import { JWT } from 'google-auth-library';
+// google-auth-library is a dependency of googleapis, but we'll let googleapis manage the auth object.
 
 // Define a more descriptive return type
 export interface GmailSendResult {
@@ -28,14 +28,15 @@ export function getGmailService(impersonatedUserEmail: string): gmail_v1.Gmail {
 
   const credentials = JSON.parse(serviceAccountKeyJson);
 
-  // Create a new JWT client for the service account
-  const auth = new JWT({
-    email: credentials.client_email,
-    key: credentials.private_key,
-    scopes: ['https://www.googleapis.com/auth/gmail.send'],
-    subject: impersonatedUserEmail, // Impersonate the user
-  });
+  // FIX: Use google.auth.fromJSON to create a correctly typed auth client.
+  const auth = google.auth.fromJSON(credentials);
 
+  // The type of `auth` can be broad, so we cast to `any` to set subject and scopes.
+  // This is safe as `fromJSON` returns a JWT-compatible client when given service account credentials.
+  (auth as any).subject = impersonatedUserEmail;
+  (auth as any).scopes = ['https://www.googleapis.com/auth/gmail.send'];
+  
+  // The `auth` object created by googleapis is now passed here, resolving the type conflict.
   return google.gmail({ version: 'v1', auth });
 }
 
@@ -107,7 +108,7 @@ export async function sendEmail(
       throw new Error('Gmail send API call succeeded but returned no message ID.');
     }
 
-    // --- STEP 2: CRITICAL FIX - GET THE MESSAGE METADATA ---
+    // --- STEP 2: CRITICAL - GET THE MESSAGE METADATA ---
     const getResponse = await gmail.users.messages.get({
       userId: 'me',
       id: internalId,
