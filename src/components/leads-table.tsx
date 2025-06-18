@@ -22,10 +22,11 @@ import type { Database } from "@/types/supabase";
 import LeadModal from "./lead-modal";
 
 // TYPE DEFINITIONS
-type LeadData = Database['public']['Views']['properties_with_contacts']['Row'];
+// FIX: Create a corrected type that matches the actual data returned by the RPC, omitting 'campaign_id'.
+type LeadData = Omit<Database['public']['Views']['properties_with_contacts']['Row'], 'campaign_id'>;
 type MarketRegion = { id: string; name: string };
 
-// FIX: Update props to accept initial data from the server
+// FIX: Update props to use the corrected LeadData type
 interface LeadsTableProps {
   initialLeads: LeadData[];
   initialMarketRegions: MarketRegion[];
@@ -91,17 +92,14 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ initialLeads, initialMar
 
   const isSuperAdmin = userRole === 'superadmin';
 
-  // FIX: Construct API URL for client-side filtering/revalidation. SWR won't fetch initially due to fallbackData.
   const leadsApiUrl = `/api/leads?search=${debouncedFilterValue}&region=${regionFilter}${!isSuperAdmin && userId ? `&userId=${userId}` : ''}`;
   
-  // FIX: Use initialLeads as fallbackData to prevent initial client-side fetch.
   const { data: leads, error: leadsError, isLoading: isLoadingLeads, mutate } = useSWR<LeadData[]>(
     leadsApiUrl,
     fetcher,
     { fallbackData: initialLeads }
   );
   
-  // FIX: Use initialMarketRegions as fallbackData.
   const { data: marketRegions, isLoading: isLoadingRegions } = useSWR<MarketRegion[]>(
       '/api/market-regions', 
       fetcher, 
@@ -177,7 +175,7 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ initialLeads, initialMar
   };
   
   const handleSaveSuccess = () => {
-    mutate(); // Revalidate SWR cache
+    mutate();
     handleCloseModal();
   };
 
