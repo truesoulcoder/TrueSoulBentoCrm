@@ -144,7 +144,7 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ apiKey, address })
             // FIX: Pass required props and use standardized env var name
             defaultCenter={position}
             defaultZoom={14}
-            mapId={process.env.NEXT_PUBLIC_Maps_ID}
+            mapId={process.env.NEXT_PUBLIC_MAPS_ID}
             disableDefaultUI={true}
             gestureHandling={"greedy"}
           >

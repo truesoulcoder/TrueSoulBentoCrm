@@ -195,7 +195,7 @@ const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, propertyId, onSa
               <div className="h-[32rem] w-full rounded-lg mb-4 bg-default-100">
                 <StreetViewMap
                     // FIX: Use standardized environment variable name
-                    apiKey={process.env.NEXT_PUBLIC_Maps_API_KEY!}
+                    apiKey={process.env.NEXT_PUBLIC_MAPS_API_KEY!}
                     address={fullAddress}
                 />
               </div>
