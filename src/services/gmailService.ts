@@ -1,7 +1,7 @@
 // src/services/gmailService.ts
 import { google } from 'googleapis';
+import { Impersonated, GoogleAuth } from 'google-auth-library';
 import type { gmail_v1 } from 'googleapis';
-// google-auth-library is a dependency of googleapis, but we'll let googleapis manage the auth object.
 
 // Define a more descriptive return type
 export interface GmailSendResult {
@@ -19,25 +19,24 @@ export interface GmailSendResult {
  * @returns An initialized and authenticated Gmail client instance.
  * @throws Will throw an error if environment variables are not set.
  */
-export function getGmailService(impersonatedUserEmail: string): gmail_v1.Gmail {
+export async function getGmailService(impersonatedUserEmail: string): Promise<gmail_v1.Gmail> {
   const serviceAccountKeyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
 
   if (!serviceAccountKeyJson) {
-    throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY is not set in environment variables.');
+    throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY environment variable is not set.');
   }
 
   const credentials = JSON.parse(serviceAccountKeyJson);
-
-  // FIX: Use google.auth.fromJSON to create a correctly typed auth client.
-  const auth = google.auth.fromJSON(credentials);
-
-  // The type of `auth` can be broad, so we cast to `any` to set subject and scopes.
-  // This is safe as `fromJSON` returns a JWT-compatible client when given service account credentials.
-  (auth as any).subject = impersonatedUserEmail;
-  (auth as any).scopes = ['https://www.googleapis.com/auth/gmail.send'];
-  
-  // The `auth` object created by googleapis is now passed here, resolving the type conflict.
-  return google.gmail({ version: 'v1', auth });
+  const auth = new GoogleAuth();
+  const sourceClient = await auth.getClient();
+  const impersonatedClient = new Impersonated({
+    sourceClient,
+    targetPrincipal: impersonatedUserEmail,
+    lifetime: 3600, // Lifetime in seconds, e.g., 1 hour; adjust as needed
+    delegates: [],
+    targetScopes: ['https://www.googleapis.com/auth/gmail.send'],
+  });
+  return google.gmail({ version: 'v1', auth: impersonatedClient as any }); // Temporary any cast if needed, but should resolve with proper types
 }
 
 
@@ -58,7 +57,7 @@ export async function sendEmail(
   attachments?: { filename: string; content: Buffer; contentType?: string; contentId?: string }[]
 ): Promise<GmailSendResult> {
   try {
-    const gmail = getGmailService(impersonatedUserEmail);
+    const gmail = await getGmailService(impersonatedUserEmail);
 
     const boundary = `----=_Part_Boundary_${Math.random().toString(36).substring(2)}`;
     const messageParts = [
