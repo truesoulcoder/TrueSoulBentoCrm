@@ -51,14 +51,20 @@ export async function POST(request: NextRequest) {
   const supabase = await createAdminServerClient();
 
   try {
-    // 1. Get the file path from the job record
-    const { data: job, error: jobError } = await supabase.from('upload_jobs').select('file_name').eq('job_id', jobId).single();
+    // 1. Fetch job details to get user_id and file_name
+    const { data: job, error: jobError } = await supabase
+      .from('upload_jobs')
+      .select('user_id, file_name')
+      .eq('job_id', jobId)
+      .single();
+
     if (jobError || !job) {
-      throw new Error('Job not found.');
+      throw new Error(`Job not found for ID: ${jobId}`);
     }
 
-    // 2. Download the file from Supabase Storage
-    const filePath = `${jobId}/${job.file_name}`;
+    // 2. Download the file from Supabase Storage using the correct path
+    await supabase.from('upload_jobs').update({ status: 'PROCESSING', message: 'Downloading file from storage...' }).eq('job_id', jobId);
+    const filePath = `${job.user_id}/${jobId}/${job.file_name}`;
     const { data: fileData, error: downloadError } = await supabase.storage.from('lead-uploads').download(filePath);
 
     if (downloadError) {
@@ -68,17 +74,18 @@ export async function POST(request: NextRequest) {
     const fileContent = Buffer.from(await fileData.arrayBuffer());
 
     // 3. Process the file (this will run in the background)
+    // The processCsv function will handle updating the job status from here
     processCsv(jobId, fileContent, marketRegion).catch(async (e) => {
         console.error(`[UPLOAD_PROCESS_BG_ERROR] for job ${jobId}:`, e.message);
         await supabase.from('upload_jobs').update({ status: 'FAILED', progress: 100, message: e.message }).eq('job_id', jobId);
     });
 
     // 4. Immediately return a response to the client
-    return NextResponse.json({ success: true, message: 'Processing started.' });
+    return NextResponse.json({ message: 'File processing started.' });
 
   } catch (error: any) {
-    console.error('[UPLOAD_PROCESS_API_ERROR]:', error.message);
-    // Update the job to FAILED status if an error occurs before background processing starts
+    console.error(`[UPLOAD_PROCESS_API_ERROR] for job ${jobId}:`, error.message);
+    // Update the job with the error
     await supabase.from('upload_jobs').update({ status: 'FAILED', progress: 100, message: error.message }).eq('job_id', jobId);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

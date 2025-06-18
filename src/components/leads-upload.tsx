@@ -116,7 +116,13 @@ export function LeadsUpload() {
 
       // 3. Upload the file to Supabase Storage with chunking and progress tracking
       setJobState(prevState => ({ ...prevState, message: 'Uploading file to secure storage...' }));
-      const filePath = `${jobId}/${jobState.file.name}`;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated for storage operation.');
+      }
+
+      const filePath = `${user.id}/${jobId}/${jobState.file.name}`;
       const { error: uploadError } = await supabase.storage
         .from('lead-uploads')
         .upload(filePath, jobState.file, {
