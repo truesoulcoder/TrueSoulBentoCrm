@@ -127,6 +127,8 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
 
   const [layouts, setLayouts] = React.useState<Layouts>({});
 
+  // FIX: This effect synchronizes the layout from localStorage with the current dashboard items
+  // It prevents crashes when new widgets are added or when local storage data is corrupted.
   React.useEffect(() => {
     const savedLayouts = getFromLS("layouts") || defaultLayouts;
     const synchronizedLayouts: Layouts = {};
@@ -136,13 +138,15 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
         const savedBreakpointLayout = savedLayouts[bpKey];
         const defaultBreakpointLayout = defaultLayouts[bpKey]!;
         
-        // FIX: Check if the saved layout for the breakpoint is actually an array. If not, fallback to default.
+        // FIX: Check if the saved layout for the breakpoint is actually an array.
+        // If not, fallback to the default layout for this breakpoint to prevent a crash.
         if (!Array.isArray(savedBreakpointLayout)) {
             synchronizedLayouts[bpKey] = defaultBreakpointLayout;
             return;
         }
 
         const currentItemKeys = new Set(dashboardItems.map(item => item.i));
+        
         let newLayout = savedBreakpointLayout.filter((layoutItem: LayoutItem) => currentItemKeys.has(layoutItem.i));
 
         const newLayoutKeys = new Set(newLayout.map(item => item.i));
