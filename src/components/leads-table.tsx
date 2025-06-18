@@ -299,7 +299,7 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ initialLeads, initialMar
             emptyContent={leadsError ? "Error loading leads." : (debouncedFilterValue || regionFilter !== 'all' ? "No leads found matching your criteria." : "No leads to display.")}
           >
             {(item) => (
-              <TableRow key={item.property_id} onClick={() => handleEditLead(item)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-100">
+              <TableRow key={item.property_id || undefined} onClick={() => handleEditLead(item)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-100">
                 {(columnKey) => <TableCell>{renderCell(item, columnKey)}</TableCell>}
               </TableRow>
             )}
