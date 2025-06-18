@@ -13,8 +13,8 @@ import { TemplatePreview } from "./template-preview";
 import { CampaignSettings } from "./campaign-settings";
 import { LeadsTable } from "./leads-table";
 import { LeadsUpload } from "./leads-upload";
-import { SendersWidget } from "./senders-widget"; // New
-import ZillowScraperWidget from "./ZillowScraperWidget"; // New
+import { SendersWidget } from "./senders-widget";
+import ZillowScraperWidget from "./ZillowScraperWidget";
 import type { DashboardPageData } from "@/app/page";
 
 
@@ -27,8 +27,6 @@ interface DashboardItem {
   title: string;
   subtitle: string;
   component: React.ReactNode;
-  defaultSize: { w: number; h: number };
-  minSize: { w: number; h: number };
 }
 
 interface DraggableDashboardProps {
@@ -42,7 +40,7 @@ interface DraggableDashboardProps {
 }
 
 type LayoutItem = { i: string; x: number; y: number; w: number; h: number; minW?: number; minH?: number };
-type Layouts = Record<string, LayoutItem[]>;
+type Layouts = { [P in "lg" | "md" | "sm"]?: LayoutItem[] };
 
 export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
   isRunning,
@@ -54,111 +52,21 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
   initialData,
 }) => {
   const allDashboardItems: DashboardItem[] = [
-    {
-      i: "leads",
-      title: "Campaign Leads",
-      subtitle: "Manage your campaign leads",
-      component: <LeadsTable initialLeads={initialData.leads} initialMarketRegions={initialData.marketRegions} userRole={userRole} userId={userId} />,
-      defaultSize: { w: 4, h: 4 }, 
-      minSize: { w: 3, h: 4 },
-    },
-    {
-      i: "engine-manager",
-      title: "Engine Control",
-      subtitle: "Manage campaign state",
-      component: <CampaignEngineManager initialCampaigns={initialData.campaigns} initialEngineState={initialData.engineState} />,
-      defaultSize: { w: 1, h: 2 },
-      minSize: { w: 1, h: 2 },
-    },
-    {
-      i: "status",
-      title: "Campaign Status",
-      subtitle: "Current performance",
-      component: <CampaignStatus isRunning={isRunning} isPaused={isPaused} />,
-      defaultSize: { w: 1, h: 2 },
-      minSize: { w: 1, h: 2 },
-    },
-     {
-      i: "chart",
-      title: "Performance Metrics",
-      subtitle: "Last 7 days",
-      component: <CampaignChart />,
-      defaultSize: { w: 2, h: 2 },
-      minSize: { w: 2, h: 2 },
-    },
-    {
-      i: "console",
-      title: "Console Log",
-      subtitle: "Real-time campaign updates",
-      component: <CampaignConsole isRunning={isRunning} isPaused={isPaused} />,
-      defaultSize: { w: 2, h: 2 },
-      minSize: { w: 2, h: 2 },
-    },
-    {
-      i: "template",
-      title: "Template Preview",
-      subtitle: "Current email template",
-      component: <TemplatePreview />,
-      defaultSize: { w: 2, h: 2 },
-      minSize: { w: 2, h: 2 },
-    },
-    {
-      i: "leads-upload",
-      title: "Leads Uploader",
-      subtitle: "Upload new leads via CSV",
-      component: <LeadsUpload />,
-      defaultSize: { w: 1, h: 2 },
-      minSize: { w: 1, h: 2 },
-    },
-    {
-      i: "senders",
-      title: "Email Senders",
-      subtitle: "Manage authenticated senders",
-      component: <SendersWidget />,
-      defaultSize: { w: 1, h: 2 },
-      minSize: { w: 1, h: 2 },
-    },
-    {
-      i: "zillow-scraper",
-      title: "Zillow Scraper",
-      subtitle: "Queue a new scraper job",
-      component: <ZillowScraperWidget />,
-      defaultSize: { w: 1, h: 2 },
-      minSize: { w: 1, h: 2 },
-    },
-    {
-      i: "settings",
-      title: "Campaign Settings",
-      subtitle: "Configure campaign parameters",
-      component: <CampaignSettings currentCampaign={currentCampaign} />,
-      defaultSize: { w: 1, h: 2 },
-      minSize: { w: 1, h: 2 },
-    },
+    { i: "leads", title: "Campaign Leads", subtitle: "Manage your campaign leads", component: <LeadsTable initialLeads={initialData.leads} initialMarketRegions={initialData.marketRegions} userRole={userRole} userId={userId} /> },
+    { i: "engine-manager", title: "Engine Control", subtitle: "Manage campaign state", component: <CampaignEngineManager initialCampaigns={initialData.campaigns} initialEngineState={initialData.engineState} /> },
+    { i: "status", title: "Campaign Status", subtitle: "Current performance", component: <CampaignStatus isRunning={isRunning} isPaused={isPaused} /> },
+    { i: "chart", title: "Performance Metrics", subtitle: "Last 7 days", component: <CampaignChart /> },
+    { i: "console", title: "Console Log", subtitle: "Real-time campaign updates", component: <CampaignConsole isRunning={isRunning} isPaused={isPaused} /> },
+    { i: "template", title: "Template Preview", subtitle: "Current email template", component: <TemplatePreview /> },
+    { i: "leads-upload", title: "Leads Uploader", subtitle: "Upload new leads via CSV", component: <LeadsUpload /> },
+    { i: "senders", title: "Email Senders", subtitle: "Manage authenticated senders", component: <SendersWidget /> },
+    { i: "zillow-scraper", title: "Zillow Scraper", subtitle: "Queue a new scraper job", component: <ZillowScraperWidget /> },
+    { i: "settings", title: "Campaign Settings", subtitle: "Configure campaign parameters", component: <CampaignSettings currentCampaign={currentCampaign} /> },
   ];
 
   const dashboardItems = userRole === 'superadmin' 
     ? allDashboardItems 
     : allDashboardItems.filter(item => item.i === 'leads');
-
-  const getFromLS = (key: string): any => {
-    let ls: Record<string, any> = {};
-    if (typeof window !== "undefined") {
-      try {
-        ls = JSON.parse(localStorage.getItem("dashboard-layouts") || "{}");
-      } catch (e) { console.error(e); }
-    }
-    return ls[key] || null;
-  };
-
-  const saveToLS = (key: string, value: any) => {
-    if (typeof window !== "undefined") {
-      try {
-        const layouts = JSON.parse(localStorage.getItem("dashboard-layouts") || "{}");
-        layouts[key] = value;
-        localStorage.setItem("dashboard-layouts", JSON.stringify(layouts));
-      } catch (e) { console.error(e); }
-    }
-  };
 
   const defaultLayouts: Layouts = {
     lg: [
@@ -174,32 +82,82 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       { i: "settings", x: 3, y: 8, w: 1, h: 2, minW: 1, minH: 2 },
     ],
     md: [
-      { i: "leads", x: 0, y: 0, w: 3, h: 4, minW: 3, minH: 4 },
-      { i: "chart", x: 0, y: 4, w: 2, h: 2, minW: 2, minH: 2 },
-      { i: "engine-manager", x: 2, y: 4, w: 1, h: 2, minW: 1, minH: 2 },
-      { i: "console", x: 0, y: 6, w: 2, h: 2, minW: 2, minH: 2 },
-      { i: "status", x: 2, y: 6, w: 1, h: 2, minW: 1, minH: 2 },
-      { i: "template", x: 0, y: 8, w: 3, h: 2, minW: 2, minH: 2 },
-      { i: "leads-upload", x: 0, y: 10, w: 1, h: 2, minW: 1, minH: 2 },
-      { i: "senders", x: 1, y: 10, w: 1, h: 2, minW: 1, minH: 2 },
-      { i: "zillow-scraper", x: 2, y: 10, w: 1, h: 2, minW: 1, minH: 2 },
-      { i: "settings", x: 0, y: 12, w: 3, h: 2, minW: 1, minH: 2 },
+        { i: "leads", x: 0, y: 0, w: 3, h: 4, minW: 3, minH: 4 },
+        { i: "chart", x: 0, y: 4, w: 2, h: 2, minW: 2, minH: 2 },
+        { i: "engine-manager", x: 2, y: 4, w: 1, h: 2, minW: 1, minH: 2 },
+        { i: "console", x: 0, y: 6, w: 2, h: 2, minW: 2, minH: 2 },
+        { i: "status", x: 2, y: 6, w: 1, h: 2, minW: 1, minH: 2 },
+        { i: "template", x: 0, y: 8, w: 3, h: 2, minW: 2, minH: 2 },
+        { i: "leads-upload", x: 0, y: 10, w: 1, h: 2, minW: 1, minH: 2 },
+        { i: "senders", x: 1, y: 10, w: 1, h: 2, minW: 1, minH: 2 },
+        { i: "zillow-scraper", x: 2, y: 10, w: 1, h: 2, minW: 1, minH: 2 },
+        { i: "settings", x: 0, y: 12, w: 3, h: 2, minW: 1, minH: 2 },
     ],
-     sm: [
-      { i: "leads", x: 0, y: 0, w: 1, h: 4 },
-      { i: "engine-manager", x: 0, y: 4, w: 1, h: 2 },
-      { i: "status", x: 0, y: 6, w: 1, h: 2 },
-      { i: "chart", x: 0, y: 8, w: 1, h: 2 },
-      { i: "console", x: 0, y: 10, w: 1, h: 2 },
-      { i: "leads-upload", x: 0, y: 12, w: 1, h: 2 },
-      { i: "senders", x: 0, y: 14, w: 1, h: 2 },
-      { i: "zillow-scraper", x: 0, y: 16, w: 1, h: 2 },
-      { i: "template", x: 0, y: 18, w: 1, h: 2 },
-      { i: "settings", x: 0, y: 20, w: 1, h: 2 },
+    sm: [
+        { i: "leads", x: 0, y: 0, w: 1, h: 4 },
+        { i: "engine-manager", x: 0, y: 4, w: 1, h: 2 },
+        { i: "status", x: 0, y: 6, w: 1, h: 2 },
+        { i: "chart", x: 0, y: 8, w: 1, h: 2 },
+        { i: "console", x: 0, y: 10, w: 1, h: 2 },
+        { i: "leads-upload", x: 0, y: 12, w: 1, h: 2 },
+        { i: "senders", x: 0, y: 14, w: 1, h: 2 },
+        { i: "zillow-scraper", x: 0, y: 16, w: 1, h: 2 },
+        { i: "template", x: 0, y: 18, w: 1, h: 2 },
+        { i: "settings", x: 0, y: 20, w: 1, h: 2 },
     ],
   };
 
-  const [layouts, setLayouts] = React.useState<Layouts>(() => getFromLS("layouts") || defaultLayouts);
+  const getFromLS = (key: string): Layouts | null => {
+    if (typeof window !== "undefined") {
+      try {
+        const value = localStorage.getItem(key);
+        return value ? JSON.parse(value) : null;
+      } catch (e) { console.error(e); }
+    }
+    return null;
+  };
+
+  const saveToLS = (key: string, value: any) => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+      } catch (e) { console.error(e); }
+    }
+  };
+
+  const [layouts, setLayouts] = React.useState<Layouts>({});
+
+  React.useEffect(() => {
+    const savedLayouts = getFromLS("layouts") || defaultLayouts;
+    const synchronizedLayouts: Layouts = {};
+
+    Object.keys(defaultLayouts).forEach(breakpoint => {
+        const bpKey = breakpoint as keyof Layouts;
+        const savedBreakpointLayout = savedLayouts[bpKey];
+        const defaultBreakpointLayout = defaultLayouts[bpKey]!;
+        
+        // FIX: Check if the saved layout for the breakpoint is actually an array. If not, fallback to default.
+        if (!Array.isArray(savedBreakpointLayout)) {
+            synchronizedLayouts[bpKey] = defaultBreakpointLayout;
+            return;
+        }
+
+        const currentItemKeys = new Set(dashboardItems.map(item => item.i));
+        let newLayout = savedBreakpointLayout.filter((layoutItem: LayoutItem) => currentItemKeys.has(layoutItem.i));
+
+        const newLayoutKeys = new Set(newLayout.map(item => item.i));
+        defaultBreakpointLayout.forEach((defaultItem: LayoutItem) => {
+            if (!newLayoutKeys.has(defaultItem.i)) {
+                newLayout.push(defaultItem);
+            }
+        });
+        
+        synchronizedLayouts[bpKey] = newLayout;
+    });
+
+    setLayouts(synchronizedLayouts);
+  }, []);
+
 
   const handleLayoutChange = (_: any, allLayouts: Layouts) => {
     if (isEditMode) {
@@ -209,8 +167,10 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
   };
 
   const resetLayout = () => {
+    if (typeof window !== "undefined") {
+        localStorage.removeItem("dashboard-layouts");
+    }
     setLayouts(defaultLayouts);
-    saveToLS("layouts", defaultLayouts);
   };
 
   return (
@@ -239,7 +199,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
         useCSSTransforms={true}
       >
         {dashboardItems.map((item) => (
-          <div key={item.i} data-grid={{...item.defaultSize, ...layouts.lg.find(l => l.i === item.i)}}>
+          <div key={item.i}>
             <Card className="h-full transition-all duration-200">
               {isEditMode && userRole === 'superadmin' && (
                 <div className="absolute left-0 right-0 top-0 z-10 flex h-full w-full cursor-move items-center justify-center rounded-lg bg-foreground/5 opacity-0 transition-opacity hover:opacity-100">
