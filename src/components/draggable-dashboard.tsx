@@ -11,8 +11,6 @@ import { TemplatePreview } from "./template-preview";
 import { CampaignSettings } from "./campaign-settings";
 import { LeadsTable } from "./leads-table";
 import { LeadsUpload } from "./leads-upload";
-import ZillowScraperWidget from "./ZillowScraperWidget";
-import { SendersWidget } from "./senders-widget"; // Import the new SendersWidget
 
 import "react-grid-layout/css/styles.css";
 
@@ -33,7 +31,6 @@ interface DraggableDashboardProps {
   currentCampaign: string;
   isEditMode: boolean;
   userRole: string;
-  userId: string; // FIX: Add userId prop here
 }
 
 type LayoutItem = { i: string; x: number; y: number; w: number; h: number };
@@ -45,16 +42,15 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
   currentCampaign,
   isEditMode,
   userRole,
-  userId, // Destructure userId here
 }) => {
   const allDashboardItems: DashboardItem[] = [
     {
       i: "leads",
       title: "Campaign Leads",
       subtitle: "Manage your campaign leads",
-      component: <LeadsTable userRole={userRole} userId={userId} />, // Pass userRole and userId
-      defaultSize: { w: 4, h: 4 }, 
-      minSize: { w: 4, h: 3 },
+      component: <LeadsTable />,
+      defaultSize: { w: 3, h: 6 }, 
+      minSize: { w: 2, h: 4 }, // Adjusted for flexibility
     },
     {
       i: "status",
@@ -70,7 +66,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       subtitle: "Last 7 days",
       component: <CampaignChart />,
       defaultSize: { w: 2, h: 2 },
-      minSize: { w: 2, h: 2 },
+      minSize: { w: 2, h: 2 }, // Chart looks best at this minimum
     },
     {
       i: "engine-manager",
@@ -82,21 +78,19 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
     },
     {
       i: "console",
-      title: "Campaign Console",
-      subtitle: "View campaign logs & status",
-      component: (
-        <CampaignConsole isRunning={isRunning} isPaused={isPaused} />
-      ),
-      defaultSize: { w: 6, h: 3 },
-      minSize: { w: 2, h: 3 },
+      title: "Console Log",
+      subtitle: "Real-time campaign updates",
+      component: <CampaignConsole isRunning={isRunning} isPaused={isPaused} />,
+      defaultSize: { w: 2, h: 2 },
+      minSize: { w: 2, h: 2 },
     },
     {
       i: "leads-upload",
       title: "Leads Uploader",
       subtitle: "Upload new leads via CSV",
       component: <LeadsUpload />,
-      defaultSize: { w: 2, h: 2 },
-      minSize: { w: 2, h: 2 },
+      defaultSize: { w: 1, h: 2 },
+      minSize: { w: 1, h: 2 }, // Adjusted for flexibility
     },
     {
       i: "template",
@@ -104,7 +98,7 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       subtitle: "Current email template",
       component: <TemplatePreview />,
       defaultSize: { w: 2, h: 2 },
-      minSize: { w: 1, h: 2 },
+      minSize: { w: 2, h: 2 },
     },
     {
       i: "settings",
@@ -114,28 +108,11 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       defaultSize: { w: 2, h: 2 },
       minSize: { w: 2, h: 2 },
     },
-    {
-      i: "zillowScraper",
-      title: "Zillow Property Scraper",
-      subtitle: "Capture property details from Zillow",
-      component: <ZillowScraperWidget />,
-      defaultSize: { w: 4, h: 4 },
-      minSize: { w: 3, h: 4 },
-    },
-    {
-      i: "senders", // New Senders Widget
-      title: "Email Senders",
-      subtitle: "Manage your sending accounts",
-      component: <SendersWidget />,
-      defaultSize: { w: 2, h: 3 }, // Adjust size as needed
-      minSize: { w: 1, h: 2 },
-    },
   ];
 
-  // Filter items based on user role
   const dashboardItems = userRole === 'superadmin' 
     ? allDashboardItems 
-    : allDashboardItems.filter(item => item.i === 'leads' || item.i === 'zillowScraper');
+    : allDashboardItems.filter(item => item.i === 'leads');
 
   const getFromLS = (key: string): any => {
     let ls: Record<string, any> = {};
@@ -161,49 +138,39 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
     }
   };
 
-  // Define default layouts based on allDashboardItems' default sizes
-  const generateDefaultLayouts = (items: DashboardItem[]): Layouts => {
-    const lgLayout: LayoutItem[] = [];
-    const mdLayout: LayoutItem[] = [];
-    const smLayout: LayoutItem[] = [];
-    
-    let yLg = 0, yMd = 0, ySm = 0; // Track y position for each breakpoint
-
-    items.forEach(item => {
-      // For LG, ensure 'senders' starts below 'engine-manager' if both are present
-      if (item.i === 'senders' && items.some(i => i.i === 'engine-manager')) {
-        // Find the position of engine-manager and place senders below it
-        const engineManagerLayout = lgLayout.find(layoutItem => layoutItem.i === 'engine-manager');
-        if (engineManagerLayout) {
-          lgLayout.push({ i: item.i, x: engineManagerLayout.x, y: engineManagerLayout.y + engineManagerLayout.h, w: item.defaultSize.w, h: item.defaultSize.h });
-        } else {
-          // Fallback if engine-manager not found (e.g., if filtered out for non-superadmin)
-          lgLayout.push({ i: item.i, x: 0, y: yLg, w: item.defaultSize.w, h: item.defaultSize.h });
-          yLg += item.defaultSize.h;
-        }
-      } else {
-        lgLayout.push({ i: item.i, x: 0, y: yLg, w: item.defaultSize.w, h: item.defaultSize.h });
-        yLg += item.defaultSize.h;
-      }
-      
-
-      // Simple stacking for smaller breakpoints
-      mdLayout.push({ i: item.i, x: 0, y: yMd, w: Math.min(item.defaultSize.w, 3), h: item.defaultSize.h });
-      yMd += item.defaultSize.h;
-
-      smLayout.push({ i: item.i, x: 0, y: ySm, w: Math.min(item.defaultSize.w, 1), h: item.defaultSize.h });
-      ySm += item.defaultSize.h;
-    });
-
-    // Sort lgLayout to ensure consistent starting positions based on their initial y.
-    // This helps in consistent layout when regenerating defaults.
-    lgLayout.sort((a, b) => a.y - b.y || a.x - b.x);
-
-    return { lg: lgLayout, md: mdLayout, sm: smLayout };
+  // Redesigned default layouts for a cleaner look
+  const defaultLayouts: Layouts = {
+    lg: [
+      { i: "leads", x: 0, y: 0, w: 3, h: 6 },
+      { i: "engine-manager", x: 3, y: 0, w: 1, h: 2 },
+      { i: "status", x: 3, y: 2, w: 1, h: 2 },
+      { i: "leads-upload", x: 3, y: 4, w: 1, h: 2 },
+      { i: "chart", x: 0, y: 6, w: 2, h: 2 },
+      { i: "console", x: 2, y: 6, w: 2, h: 2 },
+      { i: "template", x: 0, y: 8, w: 2, h: 2 },
+      { i: "settings", x: 2, y: 8, w: 2, h: 2 },
+    ],
+    md: [
+      { i: "leads", x: 0, y: 0, w: 3, h: 4 },
+      { i: "chart", x: 0, y: 4, w: 2, h: 2 },
+      { i: "status", x: 2, y: 4, w: 1, h: 2 },
+      { i: "console", x: 0, y: 6, w: 2, h: 2 },
+      { i: "engine-manager", x: 2, y: 6, w: 1, h: 2 },
+      { i: "leads-upload", x: 0, y: 8, w: 1, h: 2 },
+      { i: "template", x: 1, y: 8, w: 2, h: 2 },
+      { i: "settings", x: 0, y: 10, w: 2, h: 2 },
+    ],
+    sm: [
+      { i: "leads", x: 0, y: 0, w: 1, h: 4 },
+      { i: "engine-manager", x: 0, y: 4, w: 1, h: 2 },
+      { i: "status", x: 0, y: 6, w: 1, h: 2 },
+      { i: "chart", x: 0, y: 8, w: 1, h: 2 },
+      { i: "console", x: 0, y: 10, w: 1, h: 2 },
+      { i: "leads-upload", x: 0, y: 12, w: 1, h: 2 },
+      { i: "template", x: 0, y: 14, w: 1, h: 2 },
+      { i: "settings", x: 0, y: 16, w: 1, h: 2 },
+    ],
   };
-
-  const defaultLayouts = React.useMemo(() => generateDefaultLayouts(dashboardItems), [dashboardItems]);
-
 
   const [layouts, setLayouts] = React.useState<Layouts>(() => {
     const savedLayouts = getFromLS("layouts") as Layouts | null;
@@ -221,8 +188,6 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
     setLayouts(defaultLayouts);
     saveToLS("layouts", defaultLayouts);
   };
-
-  const isDraggableResizable = isEditMode && userRole === 'superadmin';
 
   return (
     <div className="relative">
@@ -243,11 +208,11 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       <ResponsiveGridLayout
         className="layout"
         layouts={layouts}
-        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 1 }} // Changed xxs to 1 to ensure a minimum 1 column layout
+        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
         cols={{ lg: 4, md: 3, sm: 1, xs: 1, xxs: 1 }}
         rowHeight={150}
-        isDraggable={isDraggableResizable} // Apply conditional draggable
-        isResizable={isDraggableResizable} // Apply conditional resizable
+        isDraggable={isEditMode && userRole === 'superadmin'}
+        isResizable={isEditMode && userRole === 'superadmin'}
         onLayoutChange={handleLayoutChange}
         margin={[16, 16]}
         measureBeforeMount={false}
