@@ -73,9 +73,7 @@ export async function GET(request: NextRequest) {
     // The `search_properties_with_contacts` function itself doesn't need a user ID
     // as it operates on the underlying `properties` table which has RLS.
     const { data: rpcData, error: rpcError } = await supabase.rpc('search_properties_with_contacts', {
-      search_term: search,
-      p_limit: limit,
-      p_offset: offset
+      search_term: search
     });
 
     if (rpcError) {
