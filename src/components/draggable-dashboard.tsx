@@ -11,6 +11,8 @@ import { TemplatePreview } from "./template-preview";
 import { CampaignSettings } from "./campaign-settings";
 import { LeadsTable } from "./leads-table";
 import { LeadsUpload } from "./leads-upload";
+import type { DashboardPageData } from "@/app/page";
+
 
 import "react-grid-layout/css/styles.css";
 
@@ -25,13 +27,15 @@ interface DashboardItem {
   minSize: { w: number; h: number };
 }
 
+// FIX: Update props to accept the initial server-fetched data
 interface DraggableDashboardProps {
   isRunning: boolean;
   isPaused: boolean;
   currentCampaign: string;
   isEditMode: boolean;
   userRole: string;
-  userId: string; // <-- Accept userId prop
+  userId: string;
+  initialData: DashboardPageData; // Accept the consolidated data object
 }
 
 type LayoutItem = { i: string; x: number; y: number; w: number; h: number };
@@ -43,14 +47,17 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
   currentCampaign,
   isEditMode,
   userRole,
-  userId, // <-- Destructure userId from props
+  userId,
+  initialData, // Destructure initialData from props
 }) => {
+  // FIX: Pass initialData to the relevant components
   const allDashboardItems: DashboardItem[] = [
     {
       i: "leads",
       title: "Campaign Leads",
       subtitle: "Manage your campaign leads",
-      component: <LeadsTable />,
+      // Pass leads and regions data to the table
+      component: <LeadsTable initialLeads={initialData.leads} initialMarketRegions={initialData.marketRegions} />,
       defaultSize: { w: 3, h: 6 }, 
       minSize: { w: 2, h: 4 },
     },
@@ -74,7 +81,8 @@ export const DraggableDashboard: React.FC<DraggableDashboardProps> = ({
       i: "engine-manager",
       title: "Engine Control",
       subtitle: "Manage campaign state",
-      component: <CampaignEngineManager />,
+      // Pass campaigns and engine state data to the manager
+      component: <CampaignEngineManager initialCampaigns={initialData.campaigns} initialEngineState={initialData.engineState} />,
       defaultSize: { w: 1, h: 2 },
       minSize: { w: 1, h: 2 },
     },

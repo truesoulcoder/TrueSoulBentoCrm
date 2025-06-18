@@ -7,6 +7,7 @@ import { Button, Select, SelectItem, Chip, useDisclosure } from "@heroui/react";
 import { Icon } from '@iconify/react';
 import toast from 'react-hot-toast';
 import { CreateCampaignModal } from './create-campaign-modal';
+import type { Database } from '@/types/supabase';
 
 // Re-usable fetcher for useSWR
 const fetcher = (url: string) => fetch(url).then(res => {
@@ -18,53 +19,41 @@ const fetcher = (url: string) => fetch(url).then(res => {
   return res.json();
 });
 
-// Type for the engine's state
-type EngineState = {
-  status: 'running' | 'paused' | 'stopped';
-  updated_at: string;
-};
+// Type definitions
+type EngineState = Database['public']['Tables']['engine_state']['Row'];
+type Campaign = Database['public']['Tables']['campaigns']['Row'];
 
-// Type for a single campaign
-type Campaign = {
-  id: string;
-  name: string;
-  market_region_id: string;
-};
+// FIX: Update props to accept initial data from the server
+interface CampaignEngineManagerProps {
+  initialCampaigns: Campaign[];
+  initialEngineState: EngineState | null;
+}
 
-// FIX: Define a type for the actual API response shape
-type CampaignsApiResponse = {
-  campaigns: Campaign[];
-  count: number | null;
-};
-
-export const CampaignEngineManager: React.FC = () => {
+export const CampaignEngineManager: React.FC<CampaignEngineManagerProps> = ({ initialCampaigns, initialEngineState }) => {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { isOpen, onOpen, onClose } = useDisclosure();
 
-  // Fetch engine state and campaigns
-  const { data: engineState, mutate: mutateEngineState } = useSWR<EngineState>('/api/engine/control', fetcher, { refreshInterval: 5000 });
+  // FIX: Use initial data as fallbackData for SWR hooks
+  const { data: engineState, mutate: mutateEngineState } = useSWR<EngineState | null>('/api/engine/control', fetcher, { 
+    refreshInterval: 5000,
+    fallbackData: initialEngineState,
+  });
   
-  // FIX: Use the correct API response type and extract the campaigns array
-  const { data: campaignsResponse, mutate: mutateCampaigns } = useSWR<CampaignsApiResponse>('/api/campaigns', fetcher);
-  const campaigns = campaignsResponse?.campaigns;
+  const { data: campaigns, mutate: mutateCampaigns } = useSWR<Campaign[]>('/api/campaigns', fetcher, {
+      fallbackData: initialCampaigns,
+  });
 
   const selectedCampaign = campaigns?.find(c => c.id === selectedCampaignId);
 
   const handleStateChange = useCallback(async (status: 'running' | 'paused' | 'stopped') => {
     setIsSubmitting(true);
     const toastId = toast.loading(`Requesting to ${status} engine...`);
-
     const body: { status: string; campaign_id?: string } = { status };
 
     if (status === 'running' && engineState?.status === 'paused') {
-      if (!selectedCampaignId) {
-        toast.error('Please select the campaign you wish to resume.', { id: toastId });
-        setIsSubmitting(false);
-        return;
-      }
-      body.campaign_id = selectedCampaignId;
+      body.campaign_id = selectedCampaignId; // Resuming requires the campaign context
     }
 
     try {
@@ -100,9 +89,7 @@ export const CampaignEngineManager: React.FC = () => {
       const res = await fetch('/api/engine/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          campaign_id: selectedCampaign.id,
-        }),
+        body: JSON.stringify({ campaign_id: selectedCampaign.id }),
       });
 
       const result = await res.json();
@@ -121,14 +108,10 @@ export const CampaignEngineManager: React.FC = () => {
   const getStatusChip = () => {
     if (!engineState) return <Chip color="default" variant="flat">Loading...</Chip>;
     switch (engineState.status) {
-      case 'running':
-        return <Chip color="success" variant="shadow">Running</Chip>;
-      case 'paused':
-        return <Chip color="warning" variant="shadow">Paused</Chip>;
-      case 'stopped':
-        return <Chip color="danger" variant="shadow">Stopped</Chip>;
-      default:
-        return <Chip color="default" variant="flat">Unknown</Chip>;
+      case 'running': return <Chip color="success" variant="shadow">Running</Chip>;
+      case 'paused': return <Chip color="warning" variant="shadow">Paused</Chip>;
+      case 'stopped': return <Chip color="danger" variant="shadow">Stopped</Chip>;
+      default: return <Chip color="default" variant="flat">Unknown</Chip>;
     }
   };
 
@@ -211,7 +194,10 @@ export const CampaignEngineManager: React.FC = () => {
         onSuccess={() => {
           mutateCampaigns();
           onClose();
-        } } dailyLimit={0} timeWindowHours={0}
+        }}
+        // These props are not used in the modal, passing default values
+        dailyLimit={100} 
+        timeWindowHours={8}
       />
     </>
   );

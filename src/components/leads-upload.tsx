@@ -4,12 +4,12 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useDropzone } from 'react-dropzone';
-import { Button, Input, Progress, Select, SelectItem } from '@heroui/react'; // Added Select and SelectItem
+import { Button, Progress } from '@heroui/react';
 import { v4 as uuidv4 } from 'uuid';
 import { type RealtimeChannel } from '@supabase/supabase-js';
 import { type Database } from '@/types/supabase';
 import { Icon } from '@iconify/react';
-import useSWR from 'swr'; // Import useSWR
+import FloatingLabelInput from './ui/FloatingLabelInput'; // Import the custom floating label input
 
 type JobStatus = Database['public']['Enums']['upload_job_status'];
 interface UploadJobState {
@@ -19,17 +19,10 @@ interface UploadJobState {
   message: string;
 }
 
-type MarketRegion = {
-  id: string;
-  name: string;
-};
-
-// Fetcher for market regions
-const fetcher = (url: string) => fetch(url).then(res => res.json());
-
 export function LeadsUpload() {
   const [file, setFile] = useState<File | null>(null);
-  const [marketRegionId, setMarketRegionId] = useState<string>(''); // Changed to ID
+  // FIX: Change state to handle a typed-in region name instead of a selected ID
+  const [marketRegionName, setMarketRegionName] = useState<string>('');
   const [error, setError] = useState<string>('');
 
   const [jobState, setJobState] = useState<UploadJobState>({
@@ -41,8 +34,7 @@ export function LeadsUpload() {
 
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  // Fetch market regions for the dropdown
-  const { data: marketRegions, isLoading: isLoadingRegions } = useSWR<MarketRegion[]>('/api/market-regions', fetcher);
+  // FIX: Removed the useSWR hook as we are no longer fetching market regions
 
   useEffect(() => {
     return () => {
@@ -67,7 +59,8 @@ export function LeadsUpload() {
 
   const handleReset = () => {
     setFile(null);
-    setMarketRegionId(''); // Reset market region ID
+    // FIX: Reset the market region name
+    setMarketRegionName('');
     setError('');
     setJobState({ jobId: null, status: 'INITIAL', progress: 0, message: '' });
     if (channelRef.current) {
@@ -77,10 +70,9 @@ export function LeadsUpload() {
   };
 
   const handleUpload = async () => {
-    // Find the market region name from its ID
-    const selectedRegion = marketRegions?.find(r => r.id === marketRegionId);
-    if (!file || !selectedRegion?.name) {
-      setError('Please select a file and a market region.');
+    // FIX: Validate against the marketRegionName state
+    if (!file || !marketRegionName) {
+      setError('Please provide a market region and select a file.');
       return;
     }
     setError('');
@@ -109,7 +101,8 @@ export function LeadsUpload() {
         if (status === 'SUBSCRIBED') {
           const formData = new FormData();
           formData.append('file', file);
-          formData.append('market_region', selectedRegion.name); // Send the name
+          // FIX: Send the typed-in name directly
+          formData.append('market_region', marketRegionName);
           formData.append('job_id', newJobId);
           setJobState(prevState => ({ ...prevState, progress: 10, message: 'Uploading file...' }));
           
@@ -126,9 +119,6 @@ export function LeadsUpload() {
               const errorBody = await response.json().catch(() => ({ message: 'An unknown server error occurred.' }));
               throw new Error(errorBody.message || 'The server could not process the upload.');
             }
-            // The actual progress updates will come via the realtime channel
-            // This just confirms the initial API call was accepted
-            // setJobState(prevState => ({ ...prevState, progress: 20, status: 'PROCESSING', message: 'Upload accepted, processing on server...' }));
             return response.json();
           })
           .catch(err => {
@@ -171,21 +161,14 @@ export function LeadsUpload() {
 
   return (
     <div className="flex flex-col h-full p-2 space-y-4">
-      <Select
+      {/* FIX: Replaced Select with FloatingLabelInput */}
+      <FloatingLabelInput
         label="Market Region"
-        placeholder="Select a target market"
-        selectedKeys={marketRegionId ? [marketRegionId] : []}
-        onChange={(e) => setMarketRegionId(e.target.value)}
-        isLoading={isLoadingRegions}
-        isDisabled={isLoadingRegions}
-        isRequired
-      >
-        {(marketRegions || []).map((region) => (
-          <SelectItem key={region.id} textValue={region.name}>
-            {region.name}
-          </SelectItem>
-        ))}
-      </Select>
+        placeholder="e.g., Dallas / Fort Worth"
+        value={marketRegionName}
+        onChange={(e) => setMarketRegionName(e.target.value)}
+        required
+      />
       <div {...getRootProps()} className={`flex-grow flex items-center justify-center p-4 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors ${isDragActive ? 'border-primary bg-primary-50' : 'border-default-200 hover:border-default-400'}`}>
         <input {...getInputProps()} />
         <div className="text-center text-default-500">
@@ -198,7 +181,8 @@ export function LeadsUpload() {
         </div>
       </div>
       {error && <p className="text-danger text-xs text-center">{error}</p>}
-      <Button color="primary" onPress={handleUpload} disabled={!file || !marketRegionId}>
+      {/* FIX: Update disabled logic */}
+      <Button color="primary" onPress={handleUpload} disabled={!file || !marketRegionName}>
         Upload and Process
       </Button>
     </div>

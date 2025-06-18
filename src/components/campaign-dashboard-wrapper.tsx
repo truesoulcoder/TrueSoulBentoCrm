@@ -8,26 +8,26 @@ import { Button } from '@heroui/react';
 import { Icon } from '@iconify/react';
 import { DraggableDashboard } from './draggable-dashboard';
 import { signOut } from '@/actions/auth';
-import type { Database } from '@/types/supabase';
+import type { DashboardPageData } from '@/app/page';
 
-// This type definition is used by other components that may still be in your build graph.
-export type LeadWithProperties = Database['public']['Tables']['campaign_leads']['Row'] & {
-  properties?: Database['public']['Tables']['properties']['Row'] | null;
-};
-
+// This wrapper component now accepts the server-fetched initialData
 export function CampaignDashboardWrapper({
   userRole,
-  userId, // <-- Accept userId prop
+  userId,
+  initialData,
 }: {
   userRole: string;
-  userId: string; // <-- Define userId prop type
+  userId: string;
+  initialData: DashboardPageData;
 }) {
   const [isEditMode, setIsEditMode] = useState(false);
   const { theme, setTheme } = useTheme();
   const router = useRouter();
 
-  const [isRunning, setIsRunning] = useState(true);
-  const [isPaused, setIsPaused] = useState(false);
+  // Note: These state values are now for demonstration or future client-side updates.
+  // The initial state is driven by the data passed in `initialData`.
+  const [isRunning, setIsRunning] = useState(initialData.engineState?.status === 'running');
+  const [isPaused, setIsPaused] = useState(initialData.engineState?.status === 'paused');
   const [currentCampaign, setCurrentCampaign] = useState("Q2 Investor Outreach");
 
   const handleSignOut = async () => {
@@ -79,7 +79,9 @@ export function CampaignDashboardWrapper({
           currentCampaign={currentCampaign}
           isEditMode={isEditMode}
           userRole={userRole}
-          userId={userId} 
+          userId={userId}
+          // Pass the initial data down to the dashboard grid
+          initialData={initialData}
         />
       </main>
     </div>
