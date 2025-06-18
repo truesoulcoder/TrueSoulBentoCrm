@@ -1,7 +1,7 @@
 // src/components/maps/StreetViewMap.tsx
 'use client';
 
-import { Map, AdvancedMarker, ColorScheme, RenderingType, useApiIsLoaded } from '@vis.gl/react-google-maps';
+import { Map, AdvancedMarker, useApiIsLoaded } from '@vis.gl/react-google-maps';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@heroui/react';
@@ -40,7 +40,8 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ apiKey, address })
   const isApiLoaded = useApiIsLoaded();
 
   const geocodeAddress = useCallback(() => {
-    // This function is now only called when `isApiLoaded` is true.
+    if (!isApiLoaded) return;
+    
     const geocoder = new window.google.maps.Geocoder();
     const streetViewService = new window.google.maps.StreetViewService();
 
@@ -71,17 +72,15 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ apiKey, address })
       } else {
         setStatus('error');
         setHasStreetView(false);
-        console.error(`Geocode was not successful for the following reason: ${geocoderStatus}`);
       }
     });
-  }, [address]);
+  }, [address, isApiLoaded]);
 
   useEffect(() => {
-    if (isApiLoaded) {
-      const handler = setTimeout(() => geocodeAddress(), 500);
-      return () => clearTimeout(handler);
-    }
-  }, [isApiLoaded, geocodeAddress]);
+    // Debounce the geocoding call
+    const handler = setTimeout(() => geocodeAddress(), 500);
+    return () => clearTimeout(handler);
+  }, [geocodeAddress]);
 
   useEffect(() => {
     if (isApiLoaded && panoramaRef.current && hasStreetView && position) {
@@ -110,12 +109,8 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ apiKey, address })
     }
   }, [position, hasStreetView, showStreetView, isApiLoaded]);
 
-  if (!isApiLoaded) {
+  if (!isApiLoaded || status === 'loading') {
     return <StatusDisplay message="Loading Google Maps..." icon={<Loader2 className="w-8 h-8 animate-spin" />} />;
-  }
-
-  if (status === 'loading') {
-    return <StatusDisplay message="Finding location..." icon={<Loader2 className="w-8 h-8 animate-spin" />} />;
   }
 
   if (status === 'error') {
@@ -123,16 +118,8 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ apiKey, address })
   }
   
   if (status === 'unavailable' || !position) { 
-    return <StatusDisplay message="Address not provided or invalid." icon={<AlertTriangle className="w-8 h-8 text-info" />} />;
+    return <StatusDisplay message="Address not provided." icon={<AlertTriangle className="w-8 h-8 text-info" />} />;
   }
-
-  const mapOptions: google.maps.MapOptions = {
-    center: position || { lat: 0, lng: 0 },
-    zoom: 14,
-    mapId: process.env.NEXT_PUBLIC_Maps_MAP_ID,
-    disableDefaultUI: true,
-    gestureHandling: "greedy",
-  };
 
   return (
     <div style={containerStyle}>
@@ -154,9 +141,12 @@ const StreetViewMapContent: React.FC<StreetViewMapProps> = ({ apiKey, address })
       ) : (
         <div style={{ width: '100%', height: '100%', borderRadius: '0.5rem', overflow: 'hidden' }}>
           <Map
-            mapId={process.env.NEXT_PUBLIC_Maps_MAP_ID}
-            colorScheme={ColorScheme.LIGHT}
-            renderingType={RenderingType.VECTOR}
+            // FIX: Pass required props and use standardized env var name
+            defaultCenter={position}
+            defaultZoom={14}
+            mapId={process.env.NEXT_PUBLIC_Maps_ID}
+            disableDefaultUI={true}
+            gestureHandling={"greedy"}
           >
             <AdvancedMarker position={position} />
           </Map>

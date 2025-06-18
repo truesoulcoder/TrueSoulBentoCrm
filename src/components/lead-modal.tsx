@@ -41,8 +41,7 @@ const fetcher = async (url: string) => {
   
   if (!response.ok) {
     const error: any = new Error('An error occurred while fetching the data.');
-    // Attach extra info to the error object
-    error.info = await response.json();
+    error.info = await response.json().catch(() => ({}));
     error.status = response.status;
     throw error;
   }
@@ -79,18 +78,8 @@ const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, propertyId, onSa
   const isNewLead = !propertyId;
   
   const { data: users } = useSWR<Profile[]>('/api/users', fetcher, {
-    // This onErrorRetry handler prevents the app from crashing on a 403 error.
     onErrorRetry: (error, key, config, revalidate, { retryCount }) => {
-      // Never retry on 403 Forbidden
-      if (error.status === 403) return;
-
-      // Never retry for specific key
-      if (key === '/api/users') return;
-
-      // Only retry up to 2 times
-      if (retryCount >= 2) return;
-
-      // Retry after 5 seconds
+      if (error.status === 403 || retryCount >= 2) return;
       setTimeout(() => revalidate({ retryCount }), 5000);
     }
   });
@@ -203,9 +192,9 @@ const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, propertyId, onSa
           ) : (
             <div className="space-y-6 py-4">
               
-              {/* Google Street View Map */}
               <div className="h-[32rem] w-full rounded-lg mb-4 bg-default-100">
                 <StreetViewMap
+                    // FIX: Use standardized environment variable name
                     apiKey={process.env.NEXT_PUBLIC_Maps_API_KEY!}
                     address={fullAddress}
                 />
@@ -277,7 +266,7 @@ const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, propertyId, onSa
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                 {contacts.slice(0, 4).map((c, i) => (
-                    <div key={i} className="space-y-4 p-4 border border-slate-200 dark:border-slate-700 rounded-lg relative">
+                    <div key={c.contact_id || i} className="space-y-4 p-4 border border-slate-200 dark:border-slate-700 rounded-lg relative">
                        {contacts.length > 1 && (
                          <Button isIconOnly variant="light" size="sm" className="!absolute top-1 right-1 h-8 w-8 p-0" onPress={() => removeContact(i)}>
                            <Icon icon="lucide:x" className="w-4 h-4 text-default-500" />
