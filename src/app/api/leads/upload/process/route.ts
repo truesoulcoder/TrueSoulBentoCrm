@@ -78,7 +78,7 @@ async function processCsv(
       market_region_id: marketRegionId,
       user_id: userId, // Owner of the lead
       // Add a status for new leads, e.g., 'new'
-      status: csvRecord['Status'] || 'new', 
+            status: csvRecord['Status'] || 'New Lead', 
       // Raw CSV data can be stored for auditing/debugging if you have a jsonb column
       // raw_csv_data: csvRecord 
     }));
