@@ -89,11 +89,43 @@ export async function POST(req: NextRequest) {
     .update({ status: 'PROCESSING', progress: 30, message: 'Inserting into staging table' })
     .eq('job_id', jobId);
 
-  const chunks = chunkArray(parsedRows as Record<string, any>[], 1000);
+  // Prepare list of valid columns in staging_contacts_csv
+  const validCols = new Set([
+    'first_name', 'last_name', 'recipient_address', 'recipient_city', 'recipient_state', 'recipient_postal_code',
+    'owner_type', 'property_address', 'property_city', 'property_state', 'property_postal_code', 'property_type',
+    'year_built', 'square_footage', 'lot_size_sqft', 'baths', 'beds', 'price_per_sqft',
+    'assessed_year', 'assessed_total', 'market_value', 'wholesale_value', 'avm',
+    'contact1_name', 'contact1_phone_1', 'contact1_email_1', 'contact1_email_2', 'contact1_email_3',
+    'contact2_name', 'contact2_phone_1', 'contact2_email_1', 'contact2_email_2', 'contact2_email_3',
+    'contact3_name', 'contact3_phone_1', 'contact3_email_1', 'contact3_email_2', 'contact3_email_3',
+    'mls_curr_listingid', 'mls_curr_status', 'mls_curr_listdate', 'mls_curr_solddate', 'mls_curr_daysonmarket',
+    'mls_curr_listprice', 'mls_curr_saleprice', 'mls_curr_listagentname', 'mls_curr_listagentphone', 'mls_curr_listagentemail',
+    'mls_curr_pricepersqft', 'mls_curr_sqft', 'mls_curr_beds', 'mls_curr_baths', 'mls_curr_garage', 'mls_curr_yearbuilt', 'mls_curr_photos'
+  ]);
+
+  const normalizeKey = (k: string) =>
+    k
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2') // camelCase -> camel_Case
+      .replace(/\s+/g, '_') // spaces -> _
+      .replace(/[^a-zA-Z0-9_]/g, '') // remove non-alphanum
+      .toLowerCase();
+
+  const cleanedRows = (parsedRows as Record<string, any>[]).map((row) => {
+    const out: Record<string, any> = {};
+    for (const [key, value] of Object.entries(row)) {
+      const nk = normalizeKey(key);
+      if (validCols.has(nk)) {
+        out[nk] = value === '' ? null : value;
+      }
+    }
+    return out;
+  });
+
+  const chunks = chunkArray(cleanedRows, 1000);
   for (let i = 0; i < chunks.length; i++) {
     const { error: insErr } = await supabase
       .from('staging_contacts_csv')
-      .insert(chunks[i]);
+      .insert(chunks[i], { defaultToNull: true });
     if (insErr) {
       await supabase
         .from('upload_jobs')
