@@ -5,7 +5,7 @@ import redis from '@/lib/redis';
 
 export const dynamic = 'force-dynamic';
 
-const CACHE_KEY = 'market_regions:active_with_leads_list';
+const CACHE_KEY = 'market_regions:list';
 const CACHE_TTL_SECONDS = 600; // Cache for 10 minutes
 
 export async function GET() {
@@ -25,10 +25,10 @@ export async function GET() {
   try {
     const supabase = await createAdminServerClient();
     
-    // Query the 'active_market_regions' view which filters for lead_count > 0
+    // Fetch all market regions regardless of lead count
     const { data, error } = await supabase
-      .from('active_market_regions')
-      .select('id, name') // The view should expose these columns
+      .from('market_regions')
+      .select('id, name')
       .order('name', { ascending: true });
 
     if (error) {
