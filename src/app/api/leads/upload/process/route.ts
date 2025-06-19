@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   // assume all CSV uploads go to the fixed bucket 'lead-uploads'
   const bucket = 'lead-uploads';
-  const objectPath = job.file_name; // file_name stores the full path/key
+  const objectPath = `${userId}/${jobId}/${job.file_name}`;
 
   // 4. Update status → PROCESSING
   await supabase
