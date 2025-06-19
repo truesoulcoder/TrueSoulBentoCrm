@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminServerClient } from '@/lib/supabase/server';
 import Papa from 'papaparse';
 
 // Helper: split an array into chunks of n
@@ -12,7 +12,7 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
+  const supabase = await createAdminServerClient();
 
   // 1. Auth
   const {
