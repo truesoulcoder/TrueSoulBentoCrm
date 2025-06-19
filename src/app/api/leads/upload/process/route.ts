@@ -115,22 +115,43 @@ export async function POST(req: NextRequest) {
     'assessed_total','market_value','wholesale_value','avm','price_per_sqft','mls_curr_listprice','mls_curr_saleprice','mls_curr_pricepersqft'
   ]);
 
+  // Map common vendor header variants to our canonical column names
+  const aliasMap: Record<string, string> = {
+    lotsize_sqft: 'lot_size_sqft',
+    pricepersqft: 'price_per_sqft',
+    price_per_sqft_: 'price_per_sqft',
+    beds_: 'beds',
+    baths_: 'baths',
+    yearbuilt: 'year_built',
+    assessedtotal: 'assessed_total',
+    marketvalue: 'market_value',
+    wholesalevalue: 'wholesale_value',
+    mls_curr_listingid_: 'mls_curr_listingid',
+    mls_curr_listprice_: 'mls_curr_listprice',
+    mls_curr_saleprice_: 'mls_curr_saleprice'
+    // extend as needed
+  };
+
   const cleanedRows = (parsedRows as Record<string, any>[]).map((row) => {
     const out: Record<string, any> = {};
     for (const [key, value] of Object.entries(row)) {
       const nk = normalizeKey(key);
-      if (validCols.has(nk)) {
+      let col = nk;
+      if (!validCols.has(col) && aliasMap[col]) {
+        col = aliasMap[col];
+      }
+      if (validCols.has(col)) {
         const raw = typeof value === 'string' ? value.trim() : value;
         if (typeof raw === 'string' && (raw === '' || ['n/a','na','null','--'].includes(raw.toLowerCase()))) {
-          out[nk] = null;
-        } else if (integerCols.has(nk) && typeof raw === 'string') {
+          out[col] = null;
+        } else if (integerCols.has(col) && typeof raw === 'string') {
           const cleanedVal = raw.replace(/[^0-9]/g, '');
-          out[nk] = cleanedVal === '' ? null : parseInt(cleanedVal, 10);
-        } else if (numericCols.has(nk) && typeof raw === 'string') {
+          out[col] = cleanedVal === '' ? null : parseInt(cleanedVal, 10);
+        } else if (numericCols.has(col) && typeof raw === 'string') {
           const cleanedVal = raw.replace(/[^0-9.]/g, ''); // keep digits and dot
-          out[nk] = cleanedVal === '' ? null : cleanedVal;
+          out[col] = cleanedVal === '' ? null : cleanedVal;
         } else {
-          out[nk] = raw;
+          out[col] = raw;
         }
       }
     }
