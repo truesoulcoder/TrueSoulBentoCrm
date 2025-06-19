@@ -119,11 +119,14 @@ export async function POST(req: NextRequest) {
     for (const [key, value] of Object.entries(row)) {
       const nk = normalizeKey(key);
       if (validCols.has(nk)) {
-        if (numericCols.has(nk) && typeof value === 'string') {
-          const cleanedVal = value.replace(/[$,]/g, '');
+        const raw = typeof value === 'string' ? value.trim() : value;
+        if (typeof raw === 'string' && (raw === '' || ['n/a','na','null','--'].includes(raw.toLowerCase()))) {
+          out[nk] = null;
+        } else if (numericCols.has(nk) && typeof raw === 'string') {
+          const cleanedVal = raw.replace(/[^0-9.]/g, ''); // keep digits and dot
           out[nk] = cleanedVal === '' ? null : cleanedVal;
         } else {
-          out[nk] = value === '' ? null : value;
+          out[nk] = raw;
         }
       }
     }
