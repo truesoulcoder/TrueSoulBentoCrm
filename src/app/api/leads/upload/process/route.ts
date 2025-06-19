@@ -110,12 +110,21 @@ export async function POST(req: NextRequest) {
       .replace(/[^a-zA-Z0-9_]/g, '') // remove non-alphanum
       .toLowerCase();
 
+  const numericCols = new Set([
+    'assessed_total','market_value','wholesale_value','avm','price_per_sqft','mls_curr_listprice','mls_curr_saleprice','mls_curr_pricepersqft'
+  ]);
+
   const cleanedRows = (parsedRows as Record<string, any>[]).map((row) => {
     const out: Record<string, any> = {};
     for (const [key, value] of Object.entries(row)) {
       const nk = normalizeKey(key);
       if (validCols.has(nk)) {
-        out[nk] = value === '' ? null : value;
+        if (numericCols.has(nk) && typeof value === 'string') {
+          const cleanedVal = value.replace(/[$,]/g, '');
+          out[nk] = cleanedVal === '' ? null : cleanedVal;
+        } else {
+          out[nk] = value === '' ? null : value;
+        }
       }
     }
     return out;
