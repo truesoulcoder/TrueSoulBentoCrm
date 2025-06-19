@@ -238,7 +238,7 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ initialLeads, initialMar
             >
               {[
                 { key: "all", name: "All Regions" },
-                ...(marketRegions || []).map(region => ({ key: region.name, name: region.name }))
+                ...(marketRegions || []).map(region => ({ key: region.id, name: region.name }))
               ].map(item => (
                  <SelectItem key={item.key} textValue={item.name}>{item.name}</SelectItem>
               ))}
