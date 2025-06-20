@@ -136,6 +136,12 @@ export async function POST(req: NextRequest) {
     mlscurrlistprice: 'mls_curr_listprice',
     listprice: 'mls_curr_listprice',
     listingprice: 'mls_curr_listprice',
+    // variants with inserted underscores
+    lot_size_sq_ft: 'lot_size_sqft',
+    mls_curr_list_price: 'mls_curr_listprice',
+    mls_curr_sale_price: 'mls_curr_saleprice',
+    mls_curr_price_per_sqft: 'mls_curr_pricepersqft',
+    mls_curr_days_on_market: 'mls_curr_daysonmarket',
     // extend as needed
   };
 
