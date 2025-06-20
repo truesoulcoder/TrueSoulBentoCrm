@@ -143,6 +143,11 @@ export async function POST(req: NextRequest) {
     mls_curr_price_per_sqft: 'mls_curr_pricepersqft',
     mls_curr_days_on_market: 'mls_curr_daysonmarket',
     // extend as needed
+      // MLS variants with word-separating underscores
+    mls_curr_listing_id: 'mls_curr_listingid',
+    mls_curr_list_date: 'mls_curr_listdate',
+    mls_curr_sold_date: 'mls_curr_solddate',
+    mls_curr_year_built: 'mls_curr_yearbuilt',
   };
 
   const cleanedRows = (parsedRows as Record<string, any>[]).map((row) => {
