@@ -130,7 +130,12 @@ export async function POST(req: NextRequest) {
     mls_curr_listprice_: 'mls_curr_listprice',
     mls_list_price: 'mls_curr_listprice',
     mls_days_on_market: 'mls_curr_daysonmarket',
-    mls_curr_saleprice_: 'mls_curr_saleprice'
+    mls_curr_saleprice_: 'mls_curr_saleprice',
+    // newly observed variants after header normalization
+    lotsizesqft: 'lot_size_sqft',
+    mlscurrlistprice: 'mls_curr_listprice',
+    listprice: 'mls_curr_listprice',
+    listingprice: 'mls_curr_listprice',
     // extend as needed
   };
 
@@ -157,6 +162,18 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+
+    // In dev, warn about any unmapped columns so we can extend aliasMap
+    if (process.env.NODE_ENV === 'development') {
+      for (const origKey of Object.keys(row)) {
+        const nk = normalizeKey(origKey);
+        if (!validCols.has(nk) && !aliasMap[nk]) {
+          // eslint-disable-next-line no-console
+          console.warn(`Unmapped CSV column: ${origKey} -> ${nk}`);
+        }
+      }
+    }
+
     return out;
   });
 
