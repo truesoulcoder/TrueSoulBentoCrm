@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
       .replace(/[^a-zA-Z0-9_]/g, '') // remove non-alphanum
       .toLowerCase();
 
-  const integerCols = new Set(['year_built','square_footage','beds','assessed_year','mls_curr_daysonmarket','mls_curr_sqft','mls_curr_beds','mls_curr_yearbuilt']);
+  const integerCols = new Set(['year_built','square_footage','beds','assessed_year','lot_size_sqft','price_per_sqft','mls_curr_daysonmarket','mls_curr_sqft','mls_curr_beds','mls_curr_yearbuilt','mls_curr_listprice']);
   const numericCols = new Set([
     'assessed_total','market_value','wholesale_value','avm','price_per_sqft','mls_curr_listprice','mls_curr_saleprice','mls_curr_pricepersqft'
   ]);
@@ -128,6 +128,8 @@ export async function POST(req: NextRequest) {
     wholesalevalue: 'wholesale_value',
     mls_curr_listingid_: 'mls_curr_listingid',
     mls_curr_listprice_: 'mls_curr_listprice',
+    mls_list_price: 'mls_curr_listprice',
+    mls_days_on_market: 'mls_curr_daysonmarket',
     mls_curr_saleprice_: 'mls_curr_saleprice'
     // extend as needed
   };
