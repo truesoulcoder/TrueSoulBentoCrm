@@ -2,16 +2,15 @@ CREATE OR REPLACE FUNCTION public.import_leads_from_staging(p_job_id uuid, p_use
 RETURNS void AS $$
 DECLARE
     v_market_region_id UUID;
-    v_normalized_name TEXT := LOWER(TRIM(p_market_region));
 BEGIN
     -- Step 1: Find or create the market region and get its ID.
-    INSERT INTO public.market_regions (name, normalized_name, created_by)
-    VALUES (p_market_region, v_normalized_name, p_user_id)
+    INSERT INTO public.market_regions (name, created_by)
+    VALUES (p_market_region, p_user_id)
     ON CONFLICT (normalized_name) DO UPDATE SET name = p_market_region
     RETURNING id INTO v_market_region_id;
 
     IF v_market_region_id IS NULL THEN
-        SELECT id INTO v_market_region_id FROM public.market_regions WHERE normalized_name = v_normalized_name;
+        SELECT id INTO v_market_region_id FROM public.market_regions WHERE normalized_name = LOWER(TRIM(p_market_region));
     END IF;
 
     UPDATE public.upload_jobs
