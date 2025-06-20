@@ -1,14 +1,12 @@
 // src/components/campaign-console.tsx
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React from "react";
 import { Icon } from "@iconify/react";
 import { Button, ScrollShadow } from "@heroui/react";
-import useSWR from 'swr'; // Import useSWR for data fetching
-import type { Database, Json } from '@/types/supabase'; // Import Database and Json types
+import useSWR from 'swr';
+import type { Database, Json } from '@/types/supabase';
 
-// FIX: Revert to original SystemEventLog type as 'level' column does not exist in DB schema.
-// All level information will now be stored within the 'details' JSONB column.
 type SystemEventLog = Database['public']['Tables']['system_event_logs']['Row'];
 
 interface CampaignConsoleProps {
@@ -16,67 +14,21 @@ interface CampaignConsoleProps {
   isPaused: boolean;
 }
 
-// Re-usable fetcher for useSWR
 const fetcher = (url: string) => fetch(url).then(res => {
   if (!res.ok) {
-    // If response is not OK, throw an error to trigger SWR's error state
     return res.text().then(text => { throw new Error(text || res.statusText); });
   }
   return res.json();
 });
 
 export const CampaignConsole: React.FC<CampaignConsoleProps> = ({ isRunning, isPaused }) => {
-  // Fetch logs from the new API endpoint
   const { data: logs, error, isLoading, mutate } = useSWR<SystemEventLog[]>('/api/system-logs?limit=200', fetcher, {
-    refreshInterval: 3000, // Refresh logs every 3 seconds
+    refreshInterval: 3000,
     revalidateOnFocus: true,
     onError: (err) => console.error("Error fetching system logs:", err),
   });
 
-  // Ref for the scrollable container
-  const scrollRef = useRef<HTMLDivElement>(null);
-  // Ref to keep track of whether the user has manually scrolled up
-  const isScrolledUp = useRef(false);
-
-  // Function to scroll to the bottom of the console
-  const scrollToBottom = () => {
-    if (scrollRef.current && !isScrolledUp.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  };
-
-  // Effect to scroll to bottom whenever logs change, unless user has scrolled up
-  useEffect(() => {
-    scrollToBottom();
-  }, [logs]);
-
-  // Handle manual scrolling by the user
-  const handleScroll = () => {
-    if (scrollRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-      // If user is near the bottom (within 100px), disable manual scroll tracking
-      // Otherwise, assume they've scrolled up and enable it
-      isScrolledUp.current = scrollHeight - scrollTop > clientHeight + 100;
-    }
-  };
-
-  // Attach scroll event listener
-  useEffect(() => {
-    const currentScrollRef = scrollRef.current;
-    if (currentScrollRef) {
-      currentScrollRef.addEventListener('scroll', handleScroll);
-    }
-    return () => {
-      if (currentScrollRef) {
-        currentScrollRef.removeEventListener('scroll', handleScroll);
-      }
-    };
-  }, []);
-
-  // FIX: This function now tries to read 'level' from the 'details' JSON.
-  // It also accepts 'event_type' as a fallback if 'details.level' is not available.
   const getIconForType = (logEntry: SystemEventLog) => {
-    // Access level from details property
     const levelFromDetails = (logEntry.details as any)?.level;
     const typeToUse = levelFromDetails || logEntry.event_type;
 
@@ -149,16 +101,15 @@ export const CampaignConsole: React.FC<CampaignConsoleProps> = ({ isRunning, isP
   };
 
   const clearLogs = async () => {
-    mutate([], { revalidate: true });
+    mutate([], { revalidate: false });
   };
 
   const statusColor = isRunning ? (isPaused ? "bg-warning-500" : "bg-success-500") : "bg-default-300";
   const statusText = isRunning ? (isPaused ? "Paused" : "Running") : "Stopped";
 
-  // FIX: Ensure logs is an array before mapping.
-  const displayLogs = Array.isArray(logs) ? logs : [];
+  const displayLogs = Array.isArray(logs) ? [...logs].slice(-20).reverse() : [];
 
-  if (isLoading && displayLogs.length === 0) { // Only show loading if no data is present yet
+  if (isLoading && displayLogs.length === 0) {
     return (
       <div className="flex h-full items-center justify-center rounded-medium bg-content2">
         <p className="text-default-500">Loading logs...</p>
@@ -186,14 +137,13 @@ export const CampaignConsole: React.FC<CampaignConsoleProps> = ({ isRunning, isP
         </Button>
       </div>
 
-      <ScrollShadow ref={scrollRef} className="h-full rounded-medium bg-content2 p-3 font-mono text-xs">
+      <ScrollShadow className="h-full rounded-medium bg-content2 p-3 font-mono text-xs">
         {displayLogs.length === 0 ? (
           <div className="text-default-400">No recent activity.</div>
         ) : (
-          displayLogs.map((log) => ( // Use displayLogs here
+          displayLogs.map((log) => (
             <div key={log.id} className="mb-1 flex items-start gap-2">
               <span className="text-default-400">[{new Date(log.created_at).toLocaleTimeString()}]</span>
-              {/* FIX: Pass the whole log object to getIconForType */}
               <span className="mt-0.5 flex-shrink-0">{getIconForType(log)}</span>
               <span>{log.message}</span>
             </div>
